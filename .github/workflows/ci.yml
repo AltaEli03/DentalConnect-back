@@ -2,9 +2,9 @@ name: Backend CI
 
 on:
   pull_request:
-    branches: [sprint-1-Emanuel]
+    branches: [sprint-2-Emanuel]
   push:
-    branches: [sprint-1-Emanuel]
+    branches: [sprint-2-Emanuel]
 
 permissions:
   contents: read
