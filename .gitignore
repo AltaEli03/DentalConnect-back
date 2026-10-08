@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.zip
+__pycache__/
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log

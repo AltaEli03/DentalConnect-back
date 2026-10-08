@@ -1,0 +1,50 @@
+name: Deploy API to ECS
+
+on:
+  push:
+    branches: [sprint-1-Emanuel]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    if: >-
+      vars.AWS_DEPLOY_ROLE_ARN != '' && vars.AWS_ECR_REPOSITORY != '' &&
+      vars.AWS_ECS_CLUSTER != '' && vars.AWS_ECS_SERVICE != '' &&
+      vars.AWS_ECS_EXECUTION_ROLE_ARN != '' && vars.AWS_ECS_TASK_ROLE_ARN != '' &&
+      vars.AWS_DATABASE_URL_SECRET_ARN != '' && vars.FRONTEND_ORIGIN != ''
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and publish image
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY }}
+          TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="$REGISTRY/$REPOSITORY:$TAG"
+          docker build --tag "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+      - name: Register task revision and roll out service
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          EXECUTION_ROLE_ARN: ${{ vars.AWS_ECS_EXECUTION_ROLE_ARN }}
+          TASK_ROLE_ARN: ${{ vars.AWS_ECS_TASK_ROLE_ARN }}
+          DATABASE_SECRET_ARN: ${{ vars.AWS_DATABASE_URL_SECRET_ARN }}
+          FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
+        run: |
+          sed -e "s|<IMAGE_URI>|$IMAGE_URI|g" -e "s|REPLACE_WITH_ECS_EXECUTION_ROLE_ARN|$EXECUTION_ROLE_ARN|g" -e "s|REPLACE_WITH_ECS_TASK_ROLE_ARN|$TASK_ROLE_ARN|g" -e "s|REPLACE_WITH_DATABASE_SECRET_ARN|$DATABASE_SECRET_ARN|g" -e "s|REPLACE_WITH_FRONTEND_ORIGIN|$FRONTEND_ORIGIN|g" infra/ecs-task-definition.json > task-definition.json
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster "${{ vars.AWS_ECS_CLUSTER }}" --service "${{ vars.AWS_ECS_SERVICE }}" --task-definition "$TASK_DEFINITION_ARN" --force-new-deployment

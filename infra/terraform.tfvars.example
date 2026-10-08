@@ -1,0 +1,5 @@
+aws_region              = "us-east-1"
+project_name            = "dentalconnect"
+frontend_origin         = "https://your-frontend.example"
+database_url_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:dentalconnect/database-url"
+
