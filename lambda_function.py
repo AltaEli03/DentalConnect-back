@@ -21,7 +21,7 @@ def response(status, payload):
 
 
 def lambda_handler(event, _context):
-    path = event.get("rawPath") or event.get("requestContext", {}).get("http", {}).get("path", "/")
+    path = (event.get("rawPath") or event.get("requestContext", {}).get("http", {}).get("path", "/")).rstrip("/") or "/"
     if path in ("/health", "/api/health"):
         return response(200, {"status": "ok", "service": "DentalConnect API"})
     if path in ("/api/clinics", "/clinics"):
