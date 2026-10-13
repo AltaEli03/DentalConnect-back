@@ -12,7 +12,7 @@ Permitir que una persona cree una cuenta de paciente, verifique su correo e inic
 
 **HU-03 · Inicio y cierre de sesión.** La interfaz inicia sesión mediante Cognito. Una cuenta sin confirmar recibe el error del proveedor y no se redirige a la cuenta. El acceso válido lleva a `Mi cuenta`, que muestra nombre, correo y rol `PACIENTE`. La sesión del navegador usa `sessionStorage`; cerrar sesión limpia el estado y los tokens del usuario Cognito.
 
-**TEC-05 · Correo y códigos.** El flujo web productivo usa Brevo SMTP (plan gratuito sujeto a los límites y políticas vigentes de Brevo) desde Lambda con TLS. Se requieren `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`, `AUTH_CODE_PEPPER` (secreto aleatorio de al menos 32 caracteres), `COGNITO_USER_POOL_ID` y `FRONTEND_ORIGIN`. Las credenciales y el pepper van en variables cifradas de Lambda, nunca en GitHub ni en el código. La API Express fuente también admite SMTP/SES y modo consola solo para desarrollo; ese servidor Express no es el runtime publicado.
+**TEC-05 · Correo y códigos.** El flujo web productivo envía correo con Gmail SMTP desde Lambda por TLS: `SMTP_HOST=smtp.gmail.com` y `SMTP_PORT=587`. Requiere una contraseña de aplicación de Google y verificación en dos pasos en la cuenta remitente. Se configuran `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`, `AUTH_CODE_PEPPER` (secreto aleatorio de al menos 32 caracteres), `COGNITO_USER_POOL_ID` y `FRONTEND_ORIGIN`. Las credenciales y el pepper se guardan como variables cifradas de Lambda, nunca en GitHub ni en el código. La API Express fuente también admite SMTP/SES y modo consola solo para desarrollo; ese servidor Express no es el runtime publicado.
 
 ## Seguridad
 
@@ -22,7 +22,7 @@ Los identificadores del User Pool y del cliente Cognito son configuración públ
 
 ## Despliegue
 
-El flujo de `main` publica el frontend por AWS Amplify y el directorio/API de autenticación por la Lambda Python existente. El cambio de código se publica con el workflow de GitHub Actions en la Lambda actual; Amplify publica el frontend. No se requiere encender ECS, RDS o balanceador. El plan gratuito de Brevo permite probar el correo dentro de sus límites publicados, pero AWS puede cobrar si se exceden las cuotas gratuitas; revisar la cuenta y las cuotas antes de usarlo en producción.
+El flujo de `main` publica el frontend por AWS Amplify y el directorio/API de autenticación por la Lambda Python existente. El cambio de código se publica con el workflow de GitHub Actions en la Lambda actual; Amplify publica el frontend. No se requiere encender ECS, RDS o balanceador. Gmail puede aplicar límites y filtros a los mensajes automatizados; AWS puede cobrar si se exceden las cuotas gratuitas de los servicios existentes.
 
 El flujo de Sprint 2 en GitHub Actions ejecuta instalación reproducible, generación Prisma, lint, pruebas y build al actualizar `sprint-2-Emanuel`. Las publicaciones de `main` se verifican con los workflows de Amplify y Lambda.
 
@@ -33,4 +33,4 @@ El flujo de Sprint 2 en GitHub Actions ejecuta instalación reproducible, genera
 - Backend email: comando SES, destinatario/remitente, plantilla de texto y HTML con escape de nombre, y código de consola visible solo en modo desarrollo.
 - Build: `npm run build` en ambos repositorios.
 
-El rol ya cuenta con los permisos mínimos de DynamoDB y Cognito. En Lambda están configurados `COGNITO_USER_POOL_ID`, `SMTP_HOST`, `SMTP_PORT` y `FRONTEND_ORIGIN`. Falta crear/verificar la cuenta y el remitente de Brevo y agregar directamente en Lambda `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM` y `AUTH_CODE_PEPPER`; esas credenciales no deben compartirse por chat ni guardarse en Git. Las pruebas automatizadas no envían correo ni crean usuarios reales. Hasta configurar esas cuatro variables, desplegar `main` y verificar en producción el envío, verificación e inicio/cierre de sesión, el Sprint 2 no debe declararse completamente validado.
+El rol cuenta con los permisos mínimos de DynamoDB y Cognito y las ocho variables de entorno requeridas están configuradas en Lambda. No se guardan sus valores privados en los repositorios. La prueba en producción confirmó el flujo de registro, recepción del código por correo, verificación, inicio de sesión y visualización del perfil con rol `PACIENTE` en `Mi cuenta`. Los workflows de CI y despliegue de `main` terminaron correctamente; la API de salud y el directorio de clínicas responden correctamente. El frontend prueba además el cierre de sesión mediante su suite automatizada. Las pruebas automatizadas no envían correo ni crean usuarios reales.
