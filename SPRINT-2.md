@@ -16,7 +16,7 @@ Permitir que una persona cree una cuenta de paciente, verifique su correo e inic
 
 ## Seguridad
 
-La aplicación no almacena contraseñas después de procesar la solicitud ni guarda códigos en el frontend. El código se compara con `hmac.compare_digest`, está ligado al correo y se protege con `AUTH_CODE_PEPPER`; los errores y logs nunca imprimen credenciales o códigos. Cognito administra autenticación e identidad, y los tokens del navegador permanecen en `sessionStorage`. El rol de Lambda debe limitar Cognito Admin a este User Pool y DynamoDB a la tabla existente. Las variables privadas se cifran en Lambda; no se usan claves AWS estáticas.
+La aplicación no almacena contraseñas después de procesar la solicitud ni guarda códigos en el frontend. El código se compara con `hmac.compare_digest`, está ligado al correo y se protege con `AUTH_CODE_PEPPER`; los errores y logs nunca imprimen credenciales o códigos. Cognito administra autenticación e identidad, y los tokens del navegador permanecen en `sessionStorage`. `infra/lambda-auth-policy.json` especifica los permisos que requiere el adapter, limitados a este User Pool y la tabla existente; para producción hay que asociar esa política al rol `DentalConnectLambdaExecution`. Las variables privadas se cifran en Lambda; no se usan claves AWS estáticas.
 
 Los identificadores del User Pool y del cliente Cognito son configuración pública de una SPA, no claves privadas. No se guardan contraseñas SMTP, cadenas de conexión ni claves AWS en el repositorio. `.env.example` solo contiene valores de ejemplo.
 
