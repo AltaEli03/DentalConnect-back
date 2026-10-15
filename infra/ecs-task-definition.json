@@ -12,7 +12,13 @@
       "image": "<IMAGE_URI>",
       "essential": true,
       "portMappings": [{ "containerPort": 3000, "protocol": "tcp" }],
-      "environment": [{ "name": "FRONTEND_ORIGIN", "value": "REPLACE_WITH_FRONTEND_ORIGIN" }],
+      "environment": [
+        { "name": "FRONTEND_ORIGIN", "value": "REPLACE_WITH_FRONTEND_ORIGIN" },
+        { "name": "PORT", "value": "3000" },
+        { "name": "COGNITO_USER_POOL_ID", "value": "REPLACE_WITH_COGNITO_USER_POOL_ID" },
+        { "name": "COGNITO_CLIENT_ID", "value": "REPLACE_WITH_COGNITO_CLIENT_ID" },
+        { "name": "AWS_REGION", "value": "us-east-1" }
+      ],
       "secrets": [{ "name": "DATABASE_URL", "valueFrom": "REPLACE_WITH_DATABASE_SECRET_ARN" }],
       "logConfiguration": {
         "logDriver": "awslogs",

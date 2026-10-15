@@ -2,7 +2,7 @@ name: Deploy API to ECS
 
 on:
   push:
-    branches: [sprint-1-Emanuel]
+    branches: [main]
 
 permissions:
   contents: read
@@ -14,7 +14,8 @@ jobs:
       vars.AWS_DEPLOY_ROLE_ARN != '' && vars.AWS_ECR_REPOSITORY != '' &&
       vars.AWS_ECS_CLUSTER != '' && vars.AWS_ECS_SERVICE != '' &&
       vars.AWS_ECS_EXECUTION_ROLE_ARN != '' && vars.AWS_ECS_TASK_ROLE_ARN != '' &&
-      vars.AWS_DATABASE_URL_SECRET_ARN != '' && vars.FRONTEND_ORIGIN != ''
+      vars.AWS_DATABASE_URL_SECRET_ARN != '' && vars.FRONTEND_ORIGIN != '' &&
+      vars.COGNITO_USER_POOL_ID != '' && vars.COGNITO_CLIENT_ID != ''
     runs-on: ubuntu-latest
     env:
       AWS_REGION: us-east-1
@@ -44,7 +45,9 @@ jobs:
           TASK_ROLE_ARN: ${{ vars.AWS_ECS_TASK_ROLE_ARN }}
           DATABASE_SECRET_ARN: ${{ vars.AWS_DATABASE_URL_SECRET_ARN }}
           FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
+          COGNITO_USER_POOL_ID: ${{ vars.COGNITO_USER_POOL_ID }}
+          COGNITO_CLIENT_ID: ${{ vars.COGNITO_CLIENT_ID }}
         run: |
-          sed -e "s|<IMAGE_URI>|$IMAGE_URI|g" -e "s|REPLACE_WITH_ECS_EXECUTION_ROLE_ARN|$EXECUTION_ROLE_ARN|g" -e "s|REPLACE_WITH_ECS_TASK_ROLE_ARN|$TASK_ROLE_ARN|g" -e "s|REPLACE_WITH_DATABASE_SECRET_ARN|$DATABASE_SECRET_ARN|g" -e "s|REPLACE_WITH_FRONTEND_ORIGIN|$FRONTEND_ORIGIN|g" infra/ecs-task-definition.json > task-definition.json
+          sed -e "s|<IMAGE_URI>|$IMAGE_URI|g" -e "s|REPLACE_WITH_ECS_EXECUTION_ROLE_ARN|$EXECUTION_ROLE_ARN|g" -e "s|REPLACE_WITH_ECS_TASK_ROLE_ARN|$TASK_ROLE_ARN|g" -e "s|REPLACE_WITH_DATABASE_SECRET_ARN|$DATABASE_SECRET_ARN|g" -e "s|REPLACE_WITH_FRONTEND_ORIGIN|$FRONTEND_ORIGIN|g" -e "s|REPLACE_WITH_COGNITO_USER_POOL_ID|$COGNITO_USER_POOL_ID|g" -e "s|REPLACE_WITH_COGNITO_CLIENT_ID|$COGNITO_CLIENT_ID|g" infra/ecs-task-definition.json > task-definition.json
           TASK_DEFINITION_ARN=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
           aws ecs update-service --cluster "${{ vars.AWS_ECS_CLUSTER }}" --service "${{ vars.AWS_ECS_SERVICE }}" --task-definition "$TASK_DEFINITION_ARN" --force-new-deployment

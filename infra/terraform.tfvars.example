@@ -1,5 +1,6 @@
 aws_region              = "us-east-1"
 project_name            = "dentalconnect"
 frontend_origin         = "https://your-frontend.example"
+cognito_user_pool_id    = "us-east-1_EXAMPLE"
+cognito_client_id       = "example-client-id"
 database_url_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:dentalconnect/database-url"
-
