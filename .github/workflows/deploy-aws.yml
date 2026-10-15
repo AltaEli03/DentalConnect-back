@@ -1,0 +1,55 @@
+name: Deploy DentalConnect API to AWS
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: dentalconnect-api-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AWS_REGION: us-east-1
+      BACKEND_FUNCTION_NAME: ${{ vars.BACKEND_FUNCTION_NAME }}
+      BACKEND_API_URL: ${{ vars.BACKEND_API_URL }}
+      AWS_ROLE_ARN: ${{ vars.AWS_BACKEND_ROLE_ARN }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate deployment configuration
+        run: |
+          test -n "$BACKEND_FUNCTION_NAME"
+          test -n "$BACKEND_API_URL"
+          test -n "$AWS_ROLE_ARN"
+          test -s lambda_function.py
+      - name: Get temporary AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@4a1596c86fd706dc0521e32f0121ad1a6d1adb74 # v6
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: DentalConnectApi-${{ github.run_id }}
+          retry-max-attempts: 3
+      - name: Deploy and verify API
+        run: |
+          zip backend.zip lambda_function.py
+          aws lambda update-function-code --function-name "$BACKEND_FUNCTION_NAME" --zip-file fileb://backend.zip --publish --no-cli-pager
+          aws lambda wait function-updated-v2 --function-name "$BACKEND_FUNCTION_NAME"
+          curl --fail --retry 6 --retry-delay 5 "$BACKEND_API_URL/health"
+          {
+            echo "## API deployment verified"
+            echo ""
+            echo "- API: $BACKEND_API_URL"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Branch: \`main\`"
+            echo "- Verification: GET /health returned successfully"
+          } >> "$GITHUB_STEP_SUMMARY"

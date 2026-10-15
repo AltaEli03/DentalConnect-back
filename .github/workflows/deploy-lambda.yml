@@ -1,0 +1,27 @@
+name: Deploy API to Lambda
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      BACKEND_FUNCTION_NAME: ${{ vars.BACKEND_FUNCTION_NAME }}
+      BACKEND_API_URL: ${{ vars.BACKEND_API_URL }}
+      AWS_ROLE_ARN: ${{ vars.AWS_BACKEND_ROLE_ARN }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: test -n "$BACKEND_FUNCTION_NAME" && test -n "$BACKEND_API_URL" && test -n "$AWS_ROLE_ARN"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: |
+          zip backend.zip lambda_function.py
+          aws lambda update-function-code --function-name "$BACKEND_FUNCTION_NAME" --zip-file fileb://backend.zip --publish
+          aws lambda wait function-updated-v2 --function-name "$BACKEND_FUNCTION_NAME"
+          curl --fail --retry 6 --retry-delay 5 "$BACKEND_API_URL/api/health"

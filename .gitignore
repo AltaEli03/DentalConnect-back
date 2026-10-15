@@ -1,0 +1,53 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+*.tsbuildinfo
+
+# Test output
+coverage
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform
+*.tfvars
+!*.tfvars.example
+
+# Amplify deploy artifact
+site.zip
+
+# .NET
+bin/
+obj/
+publish/
+TestResults/
+*.user
+*.suo
+*.userprefs
+.vs/
+
+#Agents
+.agents
+openspec
+skills-lock.json

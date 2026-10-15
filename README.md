@@ -1,6 +1,5 @@
 # DentalConnect API
 
-<<<<<<< HEAD
 API REST de DentalConnect desarrollada con **.NET 10** y **ASP.NET Core Web API**, organizada con arquitectura limpia (Clean Architecture) mediante proyectos de biblioteca de clases independientes. Persiste datos en **PostgreSQL** con Entity Framework Core y autentica a los pacientes con **Amazon Cognito**.
 
 Es el backend del frontend [DentalConnect-front](https://github.com/AltaEli03/DentalConnect-front).
@@ -22,7 +21,7 @@ Es el backend del frontend [DentalConnect-front](https://github.com/AltaEli03/De
 
 La solución se divide en cuatro capas, cada una en su propio proyecto. Las dependencias sólo apuntan hacia adentro:
 
-```
+```text
 DentalConnect (Web API)  ──►  DentalConnect.Infrastructure  ──►  DentalConnect.Application  ──►  DentalConnect.Domain
 ```
 
@@ -38,8 +37,9 @@ Sólo `DentalConnect.Infrastructure` referencia el SDK de AWS.
 
 ## Estructura del repositorio
 
-```
-DentalConnect.slnx
+```text
+.
+├── DentalConnect.slnx
 ├── DentalConnect/                 # Host Web API y Program.cs
 ├── DentalConnect.Application/     # Casos de uso, DTOs, validación
 ├── DentalConnect.Domain/          # Entidades
@@ -50,13 +50,9 @@ DentalConnect.slnx
 ├── docker-compose.yml             # PostgreSQL 16 + API para desarrollo local
 └── .env.example                   # Variables de entorno de referencia
 ```
-=======
-API y servicios de autenticación del proyecto DentalConnect. La aplicación web publicada conserva el directorio de clínicas del Sprint 1 y agrega el flujo de cuentas del Sprint 2.
->>>>>>> 85267d7b7afd4a1f5a87e29bc96defa9a0a81757
 
-## Arquitectura actual en AWS
+## Requisitos
 
-<<<<<<< HEAD
 - [.NET SDK 10](https://dotnet.microsoft.com/download)
 - [Docker](https://www.docker.com/) (opcional, para PostgreSQL y la imagen de la API)
 - PostgreSQL 16 (o usar el de `docker-compose.yml`)
@@ -72,10 +68,10 @@ Copie `.env.example` como referencia y defina las variables en su entorno. Varia
 
 | Variable | Obligatoria | Descripción |
 |---|---|---|
-| `DATABASE_URL` | Sí* | Cadena de conexión en formato URI, por ejemplo `postgresql://usuario:clave@host:5432/dentalconnect?schema=public`. |
-| `ConnectionStrings__DefaultConnection` | Sí* | Alternativa en formato Npgsql (`Host=...;Database=...`). |
-| `COGNITO_USER_POOL_ID` | Sí** | Identificador del user pool de Amazon Cognito (`us-east-1_...`). |
-| `COGNITO_CLIENT_ID` | Sí** | Identificador del app client de Cognito, sin secreto. |
+| `DATABASE_URL` | Sí\* | Cadena de conexión en formato URI, por ejemplo `postgresql://usuario:clave@host:5432/dentalconnect?schema=public`. |
+| `ConnectionStrings__DefaultConnection` | Sí\* | Alternativa en formato Npgsql (`Host=...;Database=...`). |
+| `COGNITO_USER_POOL_ID` | Sí\*\* | Identificador del user pool de Amazon Cognito (`us-east-1_...`). |
+| `COGNITO_CLIENT_ID` | Sí\*\* | Identificador del app client de Cognito, sin secreto. |
 | `AWS_REGION` | No | Región de AWS. Valor por defecto: `us-east-1`. |
 | `FRONTEND_ORIGIN` | No | Orígenes permitidos por CORS, separados por comas. Valor por defecto: `http://localhost:5173`. |
 | `PORT` | No | Puerto de escucha. Valor por defecto: `3000` (si no se define `ASPNETCORE_URLS`). |
@@ -183,7 +179,7 @@ Cualquier otra ruta, incluida `POST /api/auth/login`, responde `404` `NOT_FOUND`
 ### Ejemplo
 
 ```bash
-curl http://localhost:3000/api/clinics?search=Puebla
+curl "http://localhost:3000/api/clinics?search=Puebla"
 
 curl -X POST http://localhost:3000/api/auth/register \
   -H "Content-Type: application/json" \
@@ -232,44 +228,3 @@ La imagen se construye con el `Dockerfile` de la raíz, que compila todos los pr
 ## Integración con el frontend
 
 El frontend ([DentalConnect-front](https://github.com/AltaEli03/DentalConnect-front)) usa la variable `VITE_API_BASE_URL` para apuntar a esta API, por ejemplo `http://localhost:3000/api`. Añada la URL del frontend a `FRONTEND_ORIGIN` para que CORS la permita.
-=======
-- **Frontend:** React 19, TypeScript y Vite, publicado por AWS Amplify desde `main`.
-- **Directorio:** AWS Lambda y DynamoDB. El workflow de `main` publica `lambda_function.py` y comprueba `/api/health`.
-- **Cuentas en producción:** Amazon Cognito User Pools administra registro, correo de verificación e inicio/cierre de sesión. La interfaz llama a Cognito directamente y presenta las cuentas de registro como pacientes.
-- **API Express:** el repositorio conserva una implementación TypeScript con Express, Prisma y PostgreSQL para el dominio y los flujos de autenticación propios. La infraestructura ECS/RDS es una plantilla; el workflow de producción actual no la aplica. No se debe afirmar que esos endpoints Node estén activos en el sitio hasta desplegar esa infraestructura.
-
-La separación mantiene activo el Sprint 1 y deja el Sprint 2 disponible en el sitio usando Cognito, sin levantar ECS, un balanceador o RDS que agreguen cargos. El detalle de historias y pruebas está en [SPRINT-2.md](SPRINT-2.md).
-
-## API publicada
-
-- `GET /api/health`
-- `GET /api/clinics?search=`
-- `GET /api/clinics/:id`
-
-Las respuestas usan `{ "data": ... }`; los errores controlados usan `{ "error": { "code", "message" } }`.
-
-## Ejecución para desarrollo y pruebas
-
-Requisitos: Node.js 22+, PostgreSQL 16+ (o Docker).
-
-1. Copia `.env.example` a `.env` y asigna un `DATABASE_URL` de desarrollo. Nunca subas `.env`.
-2. Ejecuta `npm ci`.
-3. Genera el cliente y aplica las migraciones: `npm run prisma:generate`, `npm run prisma:deploy`.
-4. Ejecuta `npm run dev`.
-
-La API Express queda en `http://localhost:3000`. Para probar el registro en modo consola, revisa la terminal de desarrollo: el código se imprime únicamente cuando `NODE_ENV` no es `production`. Para correo real configura `EMAIL_PROVIDER=smtp`, `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER` y `SMTP_PASSWORD` con variables de entorno. Para Amazon SES se pueden usar sus credenciales SMTP; no se guardan claves AWS en el código.
-
-Controles de producción del servidor Express: exige `JWT_SECRET` propio de 32 caracteres o más, cookies `Secure`, proveedor SMTP configurado y `COOKIE_SECURE=true`; el modo consola no inicia en producción. Las contraseñas y códigos de verificación se almacenan con bcrypt; nunca se devuelven códigos en las respuestas.
-
-## Verificación de cambios
-
-```bash
-npm ci
-npm run prisma:generate
-npm run lint
-npm test
-npm run build
-```
-
-GitHub Actions ejecuta CI en `sprint-2-Emanuel`. En `main`, el frontend se publica en Amplify y el workflow backend actualiza la Lambda del directorio usando OIDC. Los flujos requieren las variables de repositorio descritas en los archivos de workflow; no se deben guardar claves AWS de larga duración.
->>>>>>> 85267d7b7afd4a1f5a87e29bc96defa9a0a81757

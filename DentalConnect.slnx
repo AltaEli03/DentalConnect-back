@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="DentalConnect.Domain/DentalConnect.Domain.csproj" />
+  <Project Path="DentalConnect.Application/DentalConnect.Application.csproj" />
+  <Project Path="DentalConnect.Infrastructure/DentalConnect.Infrastructure.csproj" />
+  <Project Path="DentalConnect/DentalConnect.csproj" />
+  <Project Path="DentalConnect.Tests/DentalConnect.Tests.csproj" />
+</Solution>
