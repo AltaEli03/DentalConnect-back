@@ -133,4 +133,38 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
 
         return builder.ConnectionString;
     }
+
+    public static string BuildConnectionString(
+        string? rawConnectionString,
+        string? host,
+        string? database,
+        string? username,
+        string? password,
+        string? port)
+    {
+        if (!string.IsNullOrWhiteSpace(rawConnectionString))
+            return NormalizeConnectionString(rawConnectionString);
+
+        if (string.IsNullOrWhiteSpace(host))
+            return NormalizeConnectionString(
+                "Host=localhost;Port=5432;Database=dentalconnect;Username=dentalconnect;Password=dentalconnect");
+
+        if (string.IsNullOrWhiteSpace(database) || string.IsNullOrWhiteSpace(username) || password is null)
+            throw new InvalidOperationException(
+                "DB_NAME, DB_USERNAME, and DB_PASSWORD are required when DB_HOST is configured.");
+
+        var parsedPort = 5432;
+        if (!string.IsNullOrWhiteSpace(port) && !int.TryParse(port, out parsedPort))
+            throw new InvalidOperationException("DB_PORT must be a valid TCP port.");
+
+        return new NpgsqlConnectionStringBuilder
+        {
+            Host = host,
+            Port = parsedPort,
+            Database = database,
+            Username = username,
+            Password = password,
+            SslMode = SslMode.VerifyFull
+        }.ConnectionString;
+    }
 }

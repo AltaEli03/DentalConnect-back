@@ -20,17 +20,20 @@ variable "cognito_client_id" {
   type = string
 }
 
-variable "database_url_secret_arn" {
-  type      = string
-  sensitive = true
-}
-
 variable "db_instance_class" {
   type    = string
   default = "db.t3.micro"
 }
 
-variable "container_image" {
+variable "github_repository" {
+  type        = string
+  description = "GitHub owner/repository trusted to deploy from main."
+  default     = "AltaEli03/DentalConnect-back"
+}
+
+variable "bootstrap_image" {
   type    = string
-  default = "mcr.microsoft.com/dotnet/aspnet:10.0"
+  # ECS service starts at desired_count=0; the first successful CI deployment
+  # replaces this placeholder with the app image before starting a task.
+  default = "public.ecr.aws/docker/library/nginx:alpine"
 }

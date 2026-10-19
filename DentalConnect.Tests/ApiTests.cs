@@ -10,6 +10,38 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace DentalConnect.Tests;
 
+public class DatabaseConnectionTests
+{
+    [Fact]
+    public void BuildConnectionString_UsesRdsComponentsAndEnforcesTls()
+    {
+        var connectionString = DentalConnectDbContext.BuildConnectionString(
+            rawConnectionString: null,
+            host: "db.example.us-east-1.rds.amazonaws.com",
+            database: "dentalconnect",
+            username: "dentalconnect",
+            password: "test-only-password",
+            port: "5432");
+
+        Assert.Contains("Host=db.example.us-east-1.rds.amazonaws.com", connectionString);
+        Assert.Contains("Database=dentalconnect", connectionString);
+        Assert.Contains("Username=dentalconnect", connectionString);
+        Assert.Contains("SSL Mode=VerifyFull", connectionString);
+    }
+
+    [Fact]
+    public void BuildConnectionString_RejectsIncompleteRdsConfiguration()
+    {
+        Assert.Throws<InvalidOperationException>(() => DentalConnectDbContext.BuildConnectionString(
+            rawConnectionString: null,
+            host: "db.example.us-east-1.rds.amazonaws.com",
+            database: "dentalconnect",
+            username: "dentalconnect",
+            password: null,
+            port: null));
+    }
+}
+
 public class FakeClinicRepository : IClinicRepository
 {
     public ClinicSearchFilter? LastFilter { get; private set; }

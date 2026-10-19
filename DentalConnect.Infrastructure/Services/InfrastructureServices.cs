@@ -179,11 +179,10 @@ public static class DatabaseSeeder
 {
     public static async Task SeedAsync(DentalConnectDbContext db, CancellationToken ct = default)
     {
-        db.ClinicServices.RemoveRange(await db.ClinicServices.ToListAsync(ct));
-        db.Dentists.RemoveRange(await db.Dentists.ToListAsync(ct));
-        db.Clinics.RemoveRange(await db.Clinics.ToListAsync(ct));
-        db.DentalServices.RemoveRange(await db.DentalServices.ToListAsync(ct));
-        await db.SaveChangesAsync(ct);
+        // Deployment may run this command more than once. Never replace or delete
+        // the production catalog; only add the demo catalog to a new empty database.
+        if (await db.Clinics.AnyAsync(ct))
+            return;
 
         var services = new List<DentalService>
         {
