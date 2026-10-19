@@ -302,7 +302,7 @@ resource "aws_iam_role_policy" "github_deploy" {
       {
         Effect   = "Allow"
         Action   = ["ecs:UpdateService"]
-        Resource = aws_ecs_service.api.arn
+        Resource = "arn:${data.aws_partition.current.partition}:ecs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.api.name}/${aws_ecs_service.api.name}"
       },
       {
         Effect   = "Allow"
