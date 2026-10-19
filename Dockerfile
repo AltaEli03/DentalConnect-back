@@ -22,6 +22,10 @@ ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish "./DentalConnect.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
+USER root
 WORKDIR /app
+ADD https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /tmp/rds-global-bundle.pem
+RUN cat /tmp/rds-global-bundle.pem >> /etc/ssl/certs/ca-certificates.crt && rm /tmp/rds-global-bundle.pem
+USER $APP_UID
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "DentalConnect.dll"]
