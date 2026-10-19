@@ -70,6 +70,7 @@ Copie `.env.example` como referencia y defina las variables en su entorno. Varia
 |---|---|---|
 | `DATABASE_URL` | Sí\* | Cadena de conexión en formato URI, por ejemplo `postgresql://usuario:clave@host:5432/dentalconnect?schema=public`. |
 | `ConnectionStrings__DefaultConnection` | Sí\* | Alternativa en formato Npgsql (`Host=...;Database=...`). |
+| `DB_HOST`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `DB_PORT` | En AWS | Componentes separados para RDS. ECS inyecta usuario y contraseña desde el secreto administrado por RDS; TLS se valida con `VerifyFull`. |
 | `COGNITO_USER_POOL_ID` | Sí\*\* | Identificador del user pool de Amazon Cognito (`us-east-1_...`). |
 | `COGNITO_CLIENT_ID` | Sí\*\* | Identificador del app client de Cognito, sin secreto. |
 | `AWS_REGION` | No | Región de AWS. Valor por defecto: `us-east-1`. |
@@ -77,7 +78,7 @@ Copie `.env.example` como referencia y defina las variables en su entorno. Varia
 | `PORT` | No | Puerto de escucha. Valor por defecto: `3000` (si no se define `ASPNETCORE_URLS`). |
 | `ASPNETCORE_ENVIRONMENT` | No | `Development`, `Production`, etc. |
 
-\* Si no se define, se usa `Host=localhost;Port=5432;Database=dentalconnect;...`.
+\* Si no se define `DATABASE_URL` ni `ConnectionStrings__DefaultConnection`, se usa el valor local de desarrollo. En AWS se exigen las variables `DB_*`.
 \*\* Obligatorias fuera de `Development`; si faltan, la aplicación no arranca.
 
 La API no emite tokens ni cookies de sesión. El inicio de sesión lo realiza el frontend directamente contra Cognito.
@@ -116,7 +117,7 @@ Para aplicar las migraciones y cargar el catálogo de ejemplo:
 dotnet run --project DentalConnect -- --seed
 ```
 
-El modo `--seed` ejecuta las migraciones pendientes y después carga el catálogo: 6 servicios dentales, 3 consultorios (Puebla, Ciudad de México y Monterrey), 9 ofertas consultorio-servicio con precio y 4 dentistas. La API no aplica migraciones al iniciar.
+El modo `--seed` ejecuta las migraciones pendientes y después carga el catálogo: 6 servicios dentales, 3 consultorios (Puebla, Ciudad de México y Monterrey), 9 ofertas consultorio-servicio con precio y 4 dentistas. La carga de datos sólo ocurre si el catálogo está vacío; nuevas publicaciones no borran ni reemplazan datos. El modo `--migrate` aplica únicamente las migraciones pendientes. La API normal no aplica migraciones al iniciar.
 
 Para crear una nueva migración:
 
@@ -196,26 +197,53 @@ Las pruebas (`DentalConnect.Tests/ApiTests.cs`) levantan la API en memoria con u
 
 ## Despliegue en AWS
 
+El despliegue de `main` está definido en `.github/workflows/deploy-aws.yml`. Primero restaura, compila, ejecuta las pruebas xUnit y construye el contenedor .NET. Si todo pasa, GitHub Actions obtiene credenciales temporales con OIDC, publica una imagen inmutable en ECR, registra una revisión de ECS, aplica migraciones de EF Core, inicializa el catálogo únicamente si está vacío y verifica el endpoint HTTPS de salud.
+
 La infraestructura está definida con Terraform en `infra/`:
 
 - VPC con subredes públicas y privadas.
-- ECS Fargate para la API, detrás de un Application Load Balancer (health check en `/api/health`).
-- RDS PostgreSQL 16 con la contraseña administrada por Secrets Manager.
+- ECS Fargate para la API, detrás de un Application Load Balancer y CloudFront para HTTPS (health check en `/api/health`).
+- RDS PostgreSQL 16 privado, cifrado y con contraseña maestra administrada por Secrets Manager. Sólo el grupo de seguridad de la API puede conectarse al puerto 5432.
 - Repositorio ECR para la imagen.
 - Grupo de logs de CloudWatch.
+- Rol de despliegue OIDC limitado al repositorio `AltaEli03/DentalConnect-back` y a la rama `main`.
 
-Pasos generales:
+La configuración inicial de Terraform crea recursos de AWS que pueden generar cargos fuera de las ofertas aplicables a la cuenta. Antes de `apply`, revisa el plan, el tipo de cuenta y los créditos disponibles en Billing. No se debe asumir que una cuenta antigua tiene el plan gratuito actual. El servicio ECS inicia con cero tareas; el workflow lo escala a una tarea después de publicar la imagen.
+
+Después de revisar el plan de AWS, aplica la infraestructura desde un entorno autenticado y protegido:
 
 ```bash
-cp infra/terraform.tfvars.example infra/terraform.tfvars   # complete los valores
+cp infra/terraform.tfvars.example infra/terraform.tfvars
 terraform -chdir=infra init
+terraform -chdir=infra validate
 terraform -chdir=infra plan
 terraform -chdir=infra apply
 ```
 
-El archivo `terraform.tfvars` y el estado de Terraform no deben subirse al repositorio.
+`terraform.tfvars` y el estado de Terraform no deben subirse al repositorio. El estado puede contener valores sensibles; en un equipo debe guardarse en un backend remoto cifrado con bloqueo.
 
-Variables de Terraform relevantes: `frontend_origin`, `cognito_user_pool_id`, `cognito_client_id`, `database_url_secret_arn` y `container_image`.
+Variables de Terraform: `frontend_origin`, `cognito_user_pool_id`, `cognito_client_id`, `github_repository` y, si se necesita, `db_instance_class`. El proveedor OIDC de GitHub debe existir en IAM; la cuenta usada anteriormente para el workflow de Lambda ya tenía este proveedor configurado.
+
+Tras el `apply`, copia las salidas de Terraform a **Settings → Secrets and variables → Actions → Variables** del repositorio backend:
+
+| Variable de GitHub | Salida de Terraform |
+|---|---|
+| `AWS_DEPLOY_ROLE_ARN` | `github_deploy_role_arn` |
+| `AWS_ECR_REPOSITORY` | `ecr_repository` |
+| `AWS_ECS_CLUSTER` | `ecs_cluster` |
+| `AWS_ECS_SERVICE` | `ecs_service` |
+| `AWS_ECS_EXECUTION_ROLE_ARN` | `ecs_execution_role_arn` |
+| `AWS_DATABASE_SECRET_ARN` | `database_secret_arn` |
+| `AWS_DATABASE_HOST` | `database_host` |
+| `AWS_ECS_SUBNETS` | `ecs_subnet_ids` |
+| `AWS_ECS_SECURITY_GROUP` | `ecs_security_group_id` |
+| `API_HEALTH_URL` | `api_health_url` |
+| `AWS_REGION` | `us-east-1` |
+| `FRONTEND_ORIGIN` | URL pública de Amplify, sin ruta |
+| `COGNITO_USER_POOL_ID` | ID del user pool existente |
+| `COGNITO_CLIENT_ID` | ID del app client público existente |
+
+El workflow falla si falta una variable, para que una ejecución verde no oculte un despliegue omitido. No se almacenan claves estáticas de AWS ni contraseñas de PostgreSQL en GitHub: el rol usa OIDC y ECS lee las credenciales de RDS desde Secrets Manager.
 
 La imagen se construye con el `Dockerfile` de la raíz, que compila todos los proyectos y expone el puerto `3000`.
 
@@ -227,4 +255,4 @@ La imagen se construye con el `Dockerfile` de la raíz, que compila todos los pr
 
 ## Integración con el frontend
 
-El frontend ([DentalConnect-front](https://github.com/AltaEli03/DentalConnect-front)) usa la variable `VITE_API_BASE_URL` para apuntar a esta API, por ejemplo `http://localhost:3000/api`. Añada la URL del frontend a `FRONTEND_ORIGIN` para que CORS la permita.
+El frontend ([DentalConnect-front](https://github.com/AltaEli03/DentalConnect-front)) usa `VITE_API_BASE_URL` para apuntar a la salida `api_base_url` de Terraform, por ejemplo `https://<CloudFront-domain>/api`. Configura esa variable en el workflow de despliegue del frontend para que el cambio de API no requiera modificar componentes. Añade la URL pública de Amplify a `FRONTEND_ORIGIN` para que CORS la permita.

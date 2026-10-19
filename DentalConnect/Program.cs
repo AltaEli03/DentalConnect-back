@@ -18,12 +18,16 @@ if (!string.IsNullOrWhiteSpace(port) && string.IsNullOrWhiteSpace(builder.Config
 var frontendOrigins = (builder.Configuration["FRONTEND_ORIGIN"] ?? "http://localhost:5173")
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-var rawDbUrl = builder.Configuration["DATABASE_URL"]
-    ?? builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Host=localhost;Port=5432;Database=dentalconnect;Username=dentalconnect;Password=dentalconnect";
+var dbConnectionString = DentalConnectDbContext.BuildConnectionString(
+    builder.Configuration["DATABASE_URL"] ?? builder.Configuration.GetConnectionString("DefaultConnection"),
+    builder.Configuration["DB_HOST"],
+    builder.Configuration["DB_NAME"],
+    builder.Configuration["DB_USERNAME"],
+    builder.Configuration["DB_PASSWORD"],
+    builder.Configuration["DB_PORT"]);
 
 builder.Services.AddDbContext<DentalConnectDbContext>(options =>
-    options.UseNpgsql(DentalConnectDbContext.NormalizeConnectionString(rawDbUrl)));
+    options.UseNpgsql(dbConnectionString));
 
 var cognitoPoolId = builder.Configuration["COGNITO_USER_POOL_ID"];
 var cognitoClientId = builder.Configuration["COGNITO_CLIENT_ID"];
@@ -84,6 +88,14 @@ if (args.Contains("--seed"))
     var db = scope.ServiceProvider.GetRequiredService<DentalConnectDbContext>();
     await db.Database.MigrateAsync();
     await DatabaseSeeder.SeedAsync(db);
+    return;
+}
+
+if (args.Contains("--migrate"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<DentalConnectDbContext>();
+    await db.Database.MigrateAsync();
     return;
 }
 

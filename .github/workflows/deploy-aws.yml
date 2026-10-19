@@ -1,55 +1,192 @@
-name: Deploy DentalConnect API to AWS
+name: Backend CI and AWS deployment
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: dentalconnect-api-production
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      AWS_REGION: us-east-1
-      BACKEND_FUNCTION_NAME: ${{ vars.BACKEND_FUNCTION_NAME }}
-      BACKEND_API_URL: ${{ vars.BACKEND_API_URL }}
-      AWS_ROLE_ARN: ${{ vars.AWS_BACKEND_ROLE_ARN }}
+    timeout-minutes: 15
     steps:
       - name: Checkout source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - name: Validate deployment configuration
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore DentalConnect.slnx
+      - name: Build
+        run: dotnet build DentalConnect.slnx --no-restore -c Release
+      - name: Unit and API tests
+        run: dotnet test DentalConnect.slnx --no-build -c Release --logger "trx;LogFileName=backend-tests.trx"
+      - name: Build production container
+        run: docker build --tag dentalconnect-api:ci .
+      - name: Check Terraform formatting
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+      - name: Validate AWS infrastructure
         run: |
-          test -n "$BACKEND_FUNCTION_NAME"
-          test -n "$BACKEND_API_URL"
-          test -n "$AWS_ROLE_ARN"
-          test -s lambda_function.py
+          terraform fmt -recursive infra
+          terraform fmt -check -recursive infra
+          terraform -chdir=infra init -backend=false -input=false
+          terraform -chdir=infra validate
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      AWS_ECR_REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY }}
+      AWS_ECS_CLUSTER: ${{ vars.AWS_ECS_CLUSTER }}
+      AWS_ECS_SERVICE: ${{ vars.AWS_ECS_SERVICE }}
+      AWS_ECS_EXECUTION_ROLE_ARN: ${{ vars.AWS_ECS_EXECUTION_ROLE_ARN }}
+      AWS_DATABASE_SECRET_ARN: ${{ vars.AWS_DATABASE_SECRET_ARN }}
+      AWS_DATABASE_HOST: ${{ vars.AWS_DATABASE_HOST }}
+      AWS_ECS_SUBNETS: ${{ vars.AWS_ECS_SUBNETS }}
+      AWS_ECS_SECURITY_GROUP: ${{ vars.AWS_ECS_SECURITY_GROUP }}
+      FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
+      COGNITO_USER_POOL_ID: ${{ vars.COGNITO_USER_POOL_ID }}
+      COGNITO_CLIENT_ID: ${{ vars.COGNITO_CLIENT_ID }}
+      API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate AWS deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AWS_DEPLOY_ROLE_ARN AWS_ECR_REPOSITORY AWS_ECS_CLUSTER AWS_ECS_SERVICE \
+            AWS_ECS_EXECUTION_ROLE_ARN AWS_DATABASE_SECRET_ARN AWS_DATABASE_HOST AWS_ECS_SUBNETS \
+            AWS_ECS_SECURITY_GROUP FRONTEND_ORIGIN COGNITO_USER_POOL_ID COGNITO_CLIENT_ID API_HEALTH_URL; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing required GitHub Actions repository variable: $name" >&2
+              exit 1
+            fi
+          done
       - name: Get temporary AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@4a1596c86fd706dc0521e32f0121ad1a6d1adb74 # v6
         with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: DentalConnectApi-${{ github.run_id }}
+          role-session-name: DentalConnect-${{ github.run_id }}
           retry-max-attempts: 3
-      - name: Deploy and verify API
+      - name: Sign in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and publish immutable image
+        id: image
+        shell: bash
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
-          zip backend.zip lambda_function.py
-          aws lambda update-function-code --function-name "$BACKEND_FUNCTION_NAME" --zip-file fileb://backend.zip --publish --no-cli-pager
-          aws lambda wait function-updated-v2 --function-name "$BACKEND_FUNCTION_NAME"
-          curl --fail --retry 6 --retry-delay 5 "$BACKEND_API_URL/health"
+          set -euo pipefail
+          image_uri="$REGISTRY/$AWS_ECR_REPOSITORY:$GITHUB_SHA"
+          docker build --pull --tag "$image_uri" .
+          docker push "$image_uri"
+          echo "uri=$image_uri" >> "$GITHUB_OUTPUT"
+      - name: Register ECS task definition
+        id: task
+        shell: bash
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+        run: |
+          set -euo pipefail
+          jq \
+            --arg image "$IMAGE_URI" \
+            --arg execution_role "$AWS_ECS_EXECUTION_ROLE_ARN" \
+            --arg frontend_origin "$FRONTEND_ORIGIN" \
+            --arg database_host "$AWS_DATABASE_HOST" \
+            --arg database_secret "$AWS_DATABASE_SECRET_ARN" \
+            --arg cognito_pool "$COGNITO_USER_POOL_ID" \
+            --arg cognito_client "$COGNITO_CLIENT_ID" \
+            --arg region "$AWS_REGION" \
+            '.executionRoleArn = $execution_role
+             | .containerDefinitions[0].image = $image
+             | (.containerDefinitions[0].environment[] | select(.name == "FRONTEND_ORIGIN").value) = $frontend_origin
+             | (.containerDefinitions[0].environment[] | select(.name == "DB_HOST").value) = $database_host
+             | (.containerDefinitions[0].environment[] | select(.name == "COGNITO_USER_POOL_ID").value) = $cognito_pool
+             | (.containerDefinitions[0].environment[] | select(.name == "COGNITO_CLIENT_ID").value) = $cognito_client
+             | (.containerDefinitions[0].environment[] | select(.name == "AWS_REGION").value) = $region
+             | (.containerDefinitions[0].logConfiguration.options["awslogs-region"]) = $region
+             | .containerDefinitions[0].secrets = [
+                 {name: "DB_USERNAME", valueFrom: ($database_secret + ":username::")},
+                 {name: "DB_PASSWORD", valueFrom: ($database_secret + ":password::")}
+               ]' infra/ecs-task-definition.json > "$RUNNER_TEMP/task-definition.json"
+          task_definition_arn=$(aws ecs register-task-definition \
+            --cli-input-json "file://$RUNNER_TEMP/task-definition.json" \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "arn=$task_definition_arn" >> "$GITHUB_OUTPUT"
+      - name: Apply versioned PostgreSQL migrations and seed an empty catalog
+        shell: bash
+        env:
+          TASK_DEFINITION_ARN: ${{ steps.task.outputs.arn }}
+        run: |
+          set -euo pipefail
+          network_configuration=$(jq -cn \
+            --arg subnets "$AWS_ECS_SUBNETS" \
+            --arg security_group "$AWS_ECS_SECURITY_GROUP" \
+            '{awsvpcConfiguration:{subnets:($subnets|split(",")|map(gsub(" ";""))),securityGroups:[$security_group],assignPublicIp:"ENABLED"}}')
+          run_task_response=$(aws ecs run-task \
+            --cluster "$AWS_ECS_CLUSTER" \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            --launch-type FARGATE \
+            --network-configuration "$network_configuration" \
+            --overrides '{"containerOverrides":[{"name":"api","command":["--seed"]}]}' )
+          task_arn=$(jq -r '.tasks[0].taskArn // empty' <<< "$run_task_response")
+          if [[ -z "$task_arn" ]]; then
+            jq '{failures:.failures}' <<< "$run_task_response"
+            exit 1
+          fi
+          aws ecs wait tasks-stopped --cluster "$AWS_ECS_CLUSTER" --tasks "$task_arn"
+          task_status=$(aws ecs describe-tasks --cluster "$AWS_ECS_CLUSTER" --tasks "$task_arn")
+          exit_code=$(jq -r '.tasks[0].containers[] | select(.name == "api") | .exitCode // "missing"' <<< "$task_status")
+          if [[ "$exit_code" != "0" ]]; then
+            jq '{stoppedReason:.tasks[0].stoppedReason,containers:[.tasks[0].containers[]|{name,exitCode,reason}]}' <<< "$task_status"
+            exit 1
+          fi
+      - name: Deploy service and verify HTTPS health endpoint
+        shell: bash
+        env:
+          TASK_DEFINITION_ARN: ${{ steps.task.outputs.arn }}
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$AWS_ECS_CLUSTER" \
+            --service "$AWS_ECS_SERVICE" \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            --desired-count 1 \
+            --force-new-deployment >/dev/null
+          aws ecs wait services-stable --cluster "$AWS_ECS_CLUSTER" --services "$AWS_ECS_SERVICE"
+          curl --fail --silent --show-error --retry 12 --retry-delay 10 "$API_HEALTH_URL"
           {
-            echo "## API deployment verified"
+            echo "## DentalConnect .NET API deployment verified"
             echo ""
-            echo "- API: $BACKEND_API_URL"
-            echo "- Commit: \`$GITHUB_SHA\`"
-            echo "- Branch: \`main\`"
-            echo "- Verification: GET /health returned successfully"
+            echo "- Commit: `$GITHUB_SHA`"
+            echo "- Branch: `main`"
+            echo "- Runtime: .NET 10 / ASP.NET Core"
+            echo "- Database: PostgreSQL with EF Core migrations"
+            echo "- Health check: `GET $API_HEALTH_URL`"
           } >> "$GITHUB_STEP_SUMMARY"
