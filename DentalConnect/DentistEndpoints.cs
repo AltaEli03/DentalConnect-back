@@ -44,7 +44,7 @@ public static class DentistEndpoints
         if (!await db.Clinics.AnyAsync(c => c.Id == clinicId, ct)) return Results.NotFound();
         var data = await db.Dentists.AsNoTracking().Where(d => d.ClinicId == clinicId)
             .OrderBy(d => d.LastName).ThenBy(d => d.FirstName)
-            .Select(d => new { d.Id, d.ClinicId, d.FirstName, d.LastName, d.ProfessionalLicense, d.Specialty, d.Biography, d.ImageUrl, d.IsActive, d.CreatedAt, d.UpdatedAt })
+            .Select(d => new { d.Id, d.ClinicId, d.FirstName, d.LastName, d.ProfessionalLicense, d.Specialty, d.Biography, d.ImageUrl, d.IsActive, d.CreatedAt, d.UpdatedAt, Services = d.DentistServices.Select(ds => new { ds.DentalService.Id, ds.DentalService.Name }).ToList() })
             .ToListAsync(ct);
         return Results.Ok(new { data });
     }
