@@ -61,6 +61,8 @@ public class EfClinicRepository(DentalConnectDbContext db) : IClinicRepository
             .Include(c => c.ClinicServices.Where(cs => cs.IsActive && cs.DentalService.IsActive))
                 .ThenInclude(cs => cs.DentalService)
             .Include(c => c.Dentists.Where(d => d.IsActive))
+                .ThenInclude(d => d.DentistServices.Where(ds => ds.DentalService.IsActive))
+                    .ThenInclude(ds => ds.DentalService)
             .FirstOrDefaultAsync(c => c.Id == id && c.IsActive, ct);
 
         if (clinic is null)
@@ -100,7 +102,10 @@ public class EfClinicRepository(DentalConnectDbContext db) : IClinicRepository
                     d.ProfessionalLicense,
                     d.Specialty,
                     d.Biography,
-                    d.ImageUrl
+                    d.ImageUrl,
+                    d.DentistServices.Where(ds => ds.DentalService.IsActive)
+                        .Select(ds => new DentistServiceDto(ds.DentalService.Id, ds.DentalService.Name, ds.DentalService.Description, ds.DentalService.EstimatedDurationMinutes))
+                        .ToList()
                 ))
                 .ToList()
         );
