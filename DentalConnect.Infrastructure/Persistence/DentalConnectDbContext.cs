@@ -12,7 +12,7 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
     public DbSet<Dentist> Dentists => Set<Dentist>();
     public DbSet<DentistService> DentistServices => Set<DentistService>();
     public DbSet<DentistWeeklySchedule> DentistWeeklySchedules => Set<DentistWeeklySchedule>();
-    public DbSet<DentistScheduleBlock> DentistScheduleBlocks => Set<DentistScheduleBlock>(); => Set<Dentist>();
+        public DbSet<DentistScheduleBlock> DentistScheduleBlocks => Set<DentistScheduleBlock>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
