@@ -32,8 +32,11 @@ public record DentistDto(
     string ProfessionalLicense,
     string Specialty,
     string Biography,
-    string? ImageUrl
+    string? ImageUrl,
+    IReadOnlyList<DentistServiceDto>? Services = null
 );
+
+public record DentistServiceDto(string Id, string Name, string Description, int EstimatedDurationMinutes);
 
 public record ClinicDetailDto(
     string Id,
