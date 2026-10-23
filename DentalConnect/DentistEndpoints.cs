@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using DentalConnect.Domain.Entities;
 using DentalConnect.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -24,23 +23,13 @@ public static class DentistEndpoints
         return endpoints;
     }
 
-    private static bool CanManage(HttpContext context, string clinicId)
-    {
-        var groups = context.User.FindAll("cognito:groups").SelectMany(c => c.Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
-        var role = context.User.FindFirst(ClaimTypes.Role)?.Value;
-        var claimedClinic = context.User.FindFirst("custom:clinicId")?.Value ?? context.User.FindFirst("clinicId")?.Value;
-        return context.User.Identity?.IsAuthenticated == true &&
-            (groups.Contains("CLINIC_ADMIN", StringComparer.Ordinal) || role == "CLINIC_ADMIN") &&
-            string.Equals(claimedClinic, clinicId, StringComparison.Ordinal);
-    }
+    private static bool CanManage(HttpContext context, string clinicId) => ClinicAccess.CanManage(context, clinicId);
 
-    private static IResult Forbidden(HttpContext context, string clinicId) => CanManage(context, clinicId)
-        ? Results.StatusCode(204)
-        : Results.Json(new { error = new { code = "CLINIC_ACCESS_DENIED", message = "No tienes permiso para administrar este consultorio" } }, statusCode: 403);
+    private static IResult Forbidden() => ClinicAccess.Forbidden();
 
     private static async Task<IResult> ListAsync(string clinicId, HttpContext context, DentalConnectDbContext db, CancellationToken ct)
     {
-        if (!CanManage(context, clinicId)) return Forbidden(context, clinicId);
+        if (!CanManage(context, clinicId)) return Forbidden();
         if (!await db.Clinics.AnyAsync(c => c.Id == clinicId, ct)) return Results.NotFound();
         var data = await db.Dentists.AsNoTracking().Where(d => d.ClinicId == clinicId)
             .OrderBy(d => d.LastName).ThenBy(d => d.FirstName)
@@ -51,7 +40,7 @@ public static class DentistEndpoints
 
     private static async Task<IResult> CreateAsync(string clinicId, HttpContext context, DentistRequest? request, DentalConnectDbContext db, CancellationToken ct)
     {
-        if (!CanManage(context, clinicId)) return Forbidden(context, clinicId);
+        if (!CanManage(context, clinicId)) return Forbidden();
         if (!Valid(request)) return Results.BadRequest(new { error = new { code = "VALIDATION_ERROR", message = "Nombre, apellidos, cédula y especialidad son obligatorios" } });
         if (!await db.Clinics.AnyAsync(c => c.Id == clinicId && c.IsActive, ct)) return Results.NotFound(new { error = new { code = "CLINIC_NOT_FOUND", message = "Consultorio no encontrado o inactivo" } });
         if (await db.Dentists.AnyAsync(d => d.ClinicId == clinicId && d.ProfessionalLicense == request!.ProfessionalLicense.Trim(), ct)) return Results.Conflict(new { error = new { code = "LICENSE_EXISTS", message = "La cédula profesional ya está registrada en este consultorio" } });
@@ -64,14 +53,14 @@ public static class DentistEndpoints
 
     private static async Task<IResult> DetailAsync(string clinicId, string dentistId, HttpContext context, DentalConnectDbContext db, CancellationToken ct)
     {
-        if (!CanManage(context, clinicId)) return Forbidden(context, clinicId);
+        if (!CanManage(context, clinicId)) return Forbidden();
         var data = await DetailShape(db, dentistId, ct, clinicId);
         return data is null ? Results.NotFound() : Results.Ok(new { data });
     }
 
     private static async Task<IResult> UpdateAsync(string clinicId, string dentistId, HttpContext context, DentistRequest? request, DentalConnectDbContext db, CancellationToken ct)
     {
-        if (!CanManage(context, clinicId)) return Forbidden(context, clinicId);
+        if (!CanManage(context, clinicId)) return Forbidden();
         if (!Valid(request)) return Results.BadRequest(new { error = new { code = "VALIDATION_ERROR", message = "Completa los campos obligatorios" } });
         var dentist = await db.Dentists.Include(d => d.DentistServices).SingleOrDefaultAsync(d => d.Id == dentistId && d.ClinicId == clinicId, ct);
         if (dentist is null) return Results.NotFound();
@@ -85,7 +74,7 @@ public static class DentistEndpoints
 
     private static async Task<IResult> SetStatusAsync(string clinicId, string dentistId, HttpContext context, DentistStatusRequest? request, DentalConnectDbContext db, CancellationToken ct)
     {
-        if (!CanManage(context, clinicId)) return Forbidden(context, clinicId);
+        if (!CanManage(context, clinicId)) return Forbidden();
         if (request is null) return Results.BadRequest();
         var dentist = await db.Dentists.SingleOrDefaultAsync(d => d.Id == dentistId && d.ClinicId == clinicId, ct);
         if (dentist is null) return Results.NotFound();
@@ -95,7 +84,7 @@ public static class DentistEndpoints
 
     private static async Task<IResult> ListScheduleAsync(string clinicId, string dentistId, HttpContext context, DentalConnectDbContext db, CancellationToken ct)
     {
-        if (!CanManage(context, clinicId)) return Forbidden(context, clinicId);
+        if (!CanManage(context, clinicId)) return Forbidden();
         if (!await DentistInClinic(db, clinicId, dentistId, ct)) return Results.NotFound();
         var data = await db.DentistWeeklySchedules.AsNoTracking().Where(s => s.DentistId == dentistId).OrderBy(s => s.DayOfWeek).ThenBy(s => s.StartsAt).ToListAsync(ct);
         return Results.Ok(new { timeZone = DentistScheduleRules.PilotTimeZoneId, data });
@@ -103,7 +92,7 @@ public static class DentistEndpoints
 
     private static async Task<IResult> AddScheduleAsync(string clinicId, string dentistId, HttpContext context, WeeklyScheduleRequest? request, DentalConnectDbContext db, CancellationToken ct)
     {
-        if (!CanManage(context, clinicId)) return Forbidden(context, clinicId);
+        if (!CanManage(context, clinicId)) return Forbidden();
         if (!Enum.IsDefined(request?.DayOfWeek ?? (DayOfWeek)(-1)) || request is null) return Results.BadRequest(new { error = new { code = "VALIDATION_ERROR", message = "Día de la semana inválido" } });
         var dentist = await db.Dentists.SingleOrDefaultAsync(d => d.Id == dentistId && d.ClinicId == clinicId, ct);
         if (dentist is null) return Results.NotFound();
@@ -118,21 +107,21 @@ public static class DentistEndpoints
 
     private static async Task<IResult> DeleteScheduleAsync(string clinicId, string dentistId, string scheduleId, HttpContext context, DentalConnectDbContext db, CancellationToken ct)
     {
-        if (!CanManage(context, clinicId)) return Forbidden(context, clinicId);
+        if (!CanManage(context, clinicId)) return Forbidden();
         var item = await db.DentistWeeklySchedules.SingleOrDefaultAsync(s => s.Id == scheduleId && s.DentistId == dentistId && s.Dentist.ClinicId == clinicId, ct);
         if (item is null) return Results.NotFound(); db.DentistWeeklySchedules.Remove(item); await db.SaveChangesAsync(ct); return Results.NoContent();
     }
 
     private static async Task<IResult> ListBlocksAsync(string clinicId, string dentistId, HttpContext context, DentalConnectDbContext db, CancellationToken ct)
     {
-        if (!CanManage(context, clinicId)) return Forbidden(context, clinicId);
+        if (!CanManage(context, clinicId)) return Forbidden();
         if (!await DentistInClinic(db, clinicId, dentistId, ct)) return Results.NotFound();
         var data = await db.DentistScheduleBlocks.AsNoTracking().Where(b => b.DentistId == dentistId).OrderBy(b => b.StartsAt).ToListAsync(ct); return Results.Ok(new { data });
     }
 
     private static async Task<IResult> AddBlockAsync(string clinicId, string dentistId, HttpContext context, BlockRequest? request, DentalConnectDbContext db, CancellationToken ct)
     {
-        if (!CanManage(context, clinicId)) return Forbidden(context, clinicId);
+        if (!CanManage(context, clinicId)) return Forbidden();
         if (request is null) return Results.BadRequest();
         var dentist = await db.Dentists.SingleOrDefaultAsync(d => d.Id == dentistId && d.ClinicId == clinicId, ct);
         if (dentist is null) return Results.NotFound();
@@ -147,7 +136,7 @@ public static class DentistEndpoints
 
     private static async Task<IResult> DeleteBlockAsync(string clinicId, string dentistId, string blockId, HttpContext context, DentalConnectDbContext db, CancellationToken ct)
     {
-        if (!CanManage(context, clinicId)) return Forbidden(context, clinicId);
+        if (!CanManage(context, clinicId)) return Forbidden();
         var item = await db.DentistScheduleBlocks.SingleOrDefaultAsync(b => b.Id == blockId && b.DentistId == dentistId && b.Dentist.ClinicId == clinicId, ct);
         if (item is null) return Results.NotFound(); db.DentistScheduleBlocks.Remove(item); await db.SaveChangesAsync(ct); return Results.NoContent();
     }

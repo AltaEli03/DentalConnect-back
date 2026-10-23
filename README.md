@@ -134,6 +134,8 @@ dotnet ef migrations add NombreMigracion --project DentalConnect.Infrastructure 
 | `ClinicService` | `id` | FK a `Clinic` (`CASCADE`) y a `DentalService` (`RESTRICT`). Único en `(clinicId, dentalServiceId)`. `priceFrom` es `numeric(10,2)`. |
 | `Dentist` | `id` | FK a `Clinic` (`CASCADE`). |
 
+`Clinic` también almacena `city`, `neighborhood`, `websiteUrl`, `facebookUrl` e `instagramUrl`. Los dos primeros son texto no nulo con valor por defecto vacío; los enlaces son opcionales.
+
 Los datos de usuarios viven en Amazon Cognito, no en PostgreSQL.
 
 ## Endpoints
@@ -152,6 +154,9 @@ Todas las rutas empiezan con `/api`. Las respuestas exitosas usan el sobre `{ "d
 |---|---|---|
 | `GET` | `/api/clinics?search=&serviceId=` | Lista consultorios activos ordenados por nombre. `search` busca en nombre, municipio y estado (sin distinguir mayúsculas). `serviceId` filtra por servicio activo. |
 | `GET` | `/api/clinics/{id}` | Detalle de un consultorio con servicios y dentistas activos. `404` `CLINIC_NOT_FOUND` si no existe o está inactivo. |
+| `PUT` | `/api/clinics/{id}` | Actualiza el perfil público del consultorio. Requiere JWT de Cognito con grupo `CLINIC_ADMIN` y claim `custom:clinicId` igual a `{id}`. Es un reemplazo completo: `name`, `address`, `phone` y `email` son obligatorios; `description`, `city`, `municipality`, `neighborhood`, `state`, `postalCode`, `latitude`, `longitude`, `websiteUrl`, `facebookUrl` e `instagramUrl` son opcionales. Responde `200` con el detalle actualizado. |
+
+El `PUT` exige autenticación. Sin token responde `401`; si el claim no coincide con el consultorio, `403` `CLINIC_ACCESS_DENIED`; si el consultorio no existe o está inactivo, `404` `CLINIC_NOT_FOUND`. Los datos inválidos responden `400` `VALIDATION_ERROR` con `details.fieldErrors` y no modifican la ficha anterior. `postalCode` debe tener cinco dígitos, las coordenadas se envían juntas y dentro de rango, y los enlaces deben ser URL absolutas con esquema `https`. El grupo y el claim los aprovisiona TEC-04 en Cognito.
 
 ### Autenticación y verificación (Amazon Cognito)
 
@@ -171,6 +176,8 @@ Cualquier otra ruta, incluida `POST /api/auth/login`, responde `404` `NOT_FOUND`
 |---|---|---|
 | `400` | `VALIDATION_ERROR` | Datos inválidos (incluye `details.fieldErrors`). |
 | `400` | `INVALID_VERIFICATION_CODE` | Código incorrecto, expirado o cuenta inexistente. |
+| `401` | — | Falta el token o no es válido. |
+| `403` | `CLINIC_ACCESS_DENIED` | El usuario no administra el consultorio solicitado. |
 | `404` | `CLINIC_NOT_FOUND` | Consultorio inexistente o inactivo. |
 | `404` | `NOT_FOUND` | Ruta inexistente. |
 | `409` | `EMAIL_EXISTS` | Correo ya registrado. |
@@ -193,7 +200,7 @@ curl -X POST http://localhost:3000/api/auth/register \
 dotnet test
 ```
 
-Las pruebas (`DentalConnect.Tests/ApiTests.cs`) levantan la API en memoria con un repositorio y un proveedor de identidad simulados, así que no requieren PostgreSQL ni llamadas a AWS.
+Las pruebas (`DentalConnect.Tests/ApiTests.cs` y `DentalConnect.Tests/ClinicProfileTests.cs`) levantan la API en memoria con un repositorio y un proveedor de identidad simulados, así que no requieren PostgreSQL ni llamadas a AWS. Los endpoints protegidos usan un esquema de autenticación de prueba con claims configurables por encabezados.
 
 ## Despliegue en AWS
 

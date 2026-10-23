@@ -1,12 +1,17 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using DentalConnect.Application.Contracts;
 using DentalConnect.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DentalConnect.Tests;
 
@@ -42,9 +47,32 @@ public class DatabaseConnectionTests
     }
 }
 
+public sealed class TestAuthHandler(
+    IOptionsMonitor<AuthenticationSchemeOptions> options,
+    ILoggerFactory logger,
+    UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        if (!Request.Headers.TryGetValue("X-Test-Role", out var role))
+            return Task.FromResult(AuthenticateResult.NoResult());
+
+        var claims = new List<Claim> { new(ClaimTypes.Role, role.ToString()) };
+        if (Request.Headers.TryGetValue("X-Test-Clinic", out var clinic))
+            claims.Add(new Claim("custom:clinicId", clinic.ToString()));
+        if (Request.Headers.TryGetValue("X-Test-Groups", out var groups))
+            claims.Add(new Claim("cognito:groups", groups.ToString()));
+
+        var identity = new ClaimsIdentity(claims, Scheme.Name);
+        return Task.FromResult(AuthenticateResult.Success(
+            new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name)));
+    }
+}
+
 public class FakeClinicRepository : IClinicRepository
 {
     public ClinicSearchFilter? LastFilter { get; private set; }
+    public int UpdateCalls { get; private set; }
     public List<ClinicSummaryDto> Summaries { get; set; } = [];
     public ClinicDetailDto Detail { get; set; } = new(
         Id: "ckvclinic00000000000000001",
@@ -53,12 +81,17 @@ public class FakeClinicRepository : IClinicRepository
         Phone: "222-555-0101",
         Email: "centro@ejemplo.dental",
         Address: "Av. Ejemplo 101",
+        City: "Puebla",
+        Neighborhood: "Centro",
         Municipality: "Puebla",
         State: "Puebla",
         PostalCode: "72000",
         Latitude: 19.0433,
         Longitude: -98.2019,
         ImageUrl: null,
+        WebsiteUrl: "https://sonrisa.example",
+        FacebookUrl: null,
+        InstagramUrl: null,
         Services: [new ClinicServiceDetailDto("ckvservice0000000000000001", "Limpieza dental", "Profilaxis ficticia.", 45, 700m)],
         Dentists: [new DentistDto("ckvdentist0000000000000001", "Valeria", "Mendoza", "CED-FICT-1001", "Odontología general", "Profesional ficticia.", null)]
     );
@@ -85,6 +118,41 @@ public class FakeClinicRepository : IClinicRepository
 
     public Task<ClinicDetailDto?> FindActiveByIdAsync(string id, CancellationToken ct = default) =>
         Task.FromResult(id == Detail.Id ? Detail : null);
+
+    public Task<ClinicDetailDto?> UpdateProfileAsync(string id, ClinicProfileUpdate data, CancellationToken ct = default)
+    {
+        UpdateCalls++;
+        if (id != Detail.Id)
+            return Task.FromResult<ClinicDetailDto?>(null);
+
+        Detail = Detail with
+        {
+            Name = data.Name,
+            Description = data.Description,
+            Phone = data.Phone,
+            Email = data.Email,
+            Address = data.Address,
+            City = data.City,
+            Municipality = data.Municipality,
+            Neighborhood = data.Neighborhood,
+            State = data.State,
+            PostalCode = data.PostalCode,
+            Latitude = data.Latitude,
+            Longitude = data.Longitude,
+            WebsiteUrl = data.WebsiteUrl,
+            FacebookUrl = data.FacebookUrl,
+            InstagramUrl = data.InstagramUrl
+        };
+        Summaries = Summaries.Select(s => s.Id == id ? s with
+        {
+            Name = data.Name,
+            Description = data.Description,
+            Municipality = data.Municipality,
+            State = data.State,
+            Address = data.Address
+        } : s).ToList();
+        return Task.FromResult<ClinicDetailDto?>(Detail);
+    }
 }
 
 public class FakeIdentityProvider : IIdentityProvider
@@ -131,6 +199,14 @@ public class ApiTests
                 services.RemoveAll<IIdentityProvider>();
                 services.AddSingleton<IClinicRepository>(clinics);
                 services.AddSingleton<IIdentityProvider>(identity);
+                services.AddAuthentication("Test")
+                    .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", null);
+                services.PostConfigure<AuthenticationOptions>(options =>
+                {
+                    options.DefaultAuthenticateScheme = "Test";
+                    options.DefaultChallengeScheme = "Test";
+                    options.DefaultScheme = "Test";
+                });
             });
         });
 
@@ -149,6 +225,40 @@ public class ApiTests
         password = "SecurePassword123!",
         confirmPassword
     };
+
+    private static Dictionary<string, object?> ValidProfile() => new()
+    {
+        ["name"] = "Clínica Actualizada",
+        ["description"] = "Nueva descripción",
+        ["phone"] = "2225550199",
+        ["email"] = "nuevo@ejemplo.dental",
+        ["address"] = "Av. Nueva 202",
+        ["city"] = "Puebla",
+        ["municipality"] = "Puebla",
+        ["neighborhood"] = "La Paz",
+        ["state"] = "Puebla",
+        ["postalCode"] = "72160",
+        ["latitude"] = 19.05,
+        ["longitude"] = -98.22,
+        ["websiteUrl"] = "https://nueva.example",
+        ["facebookUrl"] = "https://facebook.com/nueva",
+        ["instagramUrl"] = "https://instagram.com/nueva"
+    };
+
+    private static HttpRequestMessage PutProfile(
+        string id,
+        object body,
+        string? clinicId,
+        string? role = "CLINIC_ADMIN")
+    {
+        var request = new HttpRequestMessage(HttpMethod.Put, $"/api/clinics/{id}")
+        {
+            Content = JsonContent.Create(body)
+        };
+        if (role is not null) request.Headers.Add("X-Test-Role", role);
+        if (clinicId is not null) request.Headers.Add("X-Test-Clinic", clinicId);
+        return request;
+    }
 
     [Fact]
     public async Task HealthCheck_ReturnsOkAndServiceName()
@@ -202,14 +312,122 @@ public class ApiTests
 
         var okResponse = await client.GetAsync($"/api/clinics/{clinics.Detail.Id}");
         Assert.Equal(HttpStatusCode.OK, okResponse.StatusCode);
-        var dentist = (await ReadJson(okResponse)).RootElement.GetProperty("data").GetProperty("dentists")[0];
+        var detail = (await ReadJson(okResponse)).RootElement.GetProperty("data");
+        var dentist = detail.GetProperty("dentists")[0];
         Assert.Equal("Valeria", dentist.GetProperty("firstName").GetString());
         Assert.Equal("Odontología general", dentist.GetProperty("specialty").GetString());
+        Assert.Equal("Puebla", detail.GetProperty("city").GetString());
+        Assert.Equal("Centro", detail.GetProperty("neighborhood").GetString());
+        Assert.Equal("https://sonrisa.example", detail.GetProperty("websiteUrl").GetString());
 
         var notFoundResponse = await client.GetAsync("/api/clinics/ckvclinic00000000000000002");
         Assert.Equal(HttpStatusCode.NotFound, notFoundResponse.StatusCode);
         var nfDoc = await ReadJson(notFoundResponse);
         Assert.Equal("CLINIC_NOT_FOUND", nfDoc.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateClinicProfile_OwnClinic_ReturnsDetailAndPublicViewsReflectIt()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+
+        var response = await client.SendAsync(PutProfile(clinics.Detail.Id, ValidProfile(), clinics.Detail.Id));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var data = (await ReadJson(response)).RootElement.GetProperty("data");
+        Assert.Equal("Clínica Actualizada", data.GetProperty("name").GetString());
+        Assert.Equal("La Paz", data.GetProperty("neighborhood").GetString());
+        Assert.Equal("https://nueva.example", data.GetProperty("websiteUrl").GetString());
+
+        var detailResponse = await client.GetAsync($"/api/clinics/{clinics.Detail.Id}");
+        var detail = (await ReadJson(detailResponse)).RootElement.GetProperty("data");
+        Assert.Equal("Av. Nueva 202", detail.GetProperty("address").GetString());
+        Assert.Equal("72160", detail.GetProperty("postalCode").GetString());
+        Assert.Equal("https://instagram.com/nueva", detail.GetProperty("instagramUrl").GetString());
+
+        var listResponse = await client.GetAsync("/api/clinics");
+        var list = (await ReadJson(listResponse)).RootElement.GetProperty("data");
+        Assert.Equal("Clínica Actualizada", list[0].GetProperty("name").GetString());
+        Assert.Equal("Nueva descripción", list[0].GetProperty("description").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateClinicProfile_MissingAddress_Returns400AndKeepsPreviousData()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+        var previousAddress = clinics.Detail.Address;
+        var profile = ValidProfile();
+        profile.Remove("address");
+
+        var response = await client.SendAsync(PutProfile(clinics.Detail.Id, profile, clinics.Detail.Id));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var error = (await ReadJson(response)).RootElement.GetProperty("error");
+        Assert.Equal("VALIDATION_ERROR", error.GetProperty("code").GetString());
+        Assert.True(error.GetProperty("details").GetProperty("fieldErrors").TryGetProperty("address", out _));
+        Assert.Equal(0, clinics.UpdateCalls);
+
+        var detailResponse = await client.GetAsync($"/api/clinics/{clinics.Detail.Id}");
+        var detail = (await ReadJson(detailResponse)).RootElement.GetProperty("data");
+        Assert.Equal(previousAddress, detail.GetProperty("address").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateClinicProfile_InvalidUrl_Returns400WithoutUpdating()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+        var profile = ValidProfile();
+        profile["websiteUrl"] = "http://nueva.example";
+
+        var response = await client.SendAsync(PutProfile(clinics.Detail.Id, profile, clinics.Detail.Id));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var error = (await ReadJson(response)).RootElement.GetProperty("error");
+        Assert.True(error.GetProperty("details").GetProperty("fieldErrors").TryGetProperty("websiteUrl", out _));
+        Assert.Equal(0, clinics.UpdateCalls);
+    }
+
+    [Fact]
+    public async Task UpdateClinicProfile_OtherClinic_Returns403()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+
+        var response = await client.SendAsync(PutProfile(
+            clinics.Detail.Id,
+            ValidProfile(),
+            "ckvclinic00000000000000002"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var error = (await ReadJson(response)).RootElement.GetProperty("error");
+        Assert.Equal("CLINIC_ACCESS_DENIED", error.GetProperty("code").GetString());
+        Assert.Equal(0, clinics.UpdateCalls);
+    }
+
+    [Fact]
+    public async Task UpdateClinicProfile_WithoutToken_Returns401()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+
+        var response = await client.SendAsync(PutProfile(clinics.Detail.Id, ValidProfile(), null, role: null));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(0, clinics.UpdateCalls);
+    }
+
+    [Fact]
+    public async Task UpdateClinicProfile_UnknownClinic_Returns404()
+    {
+        var (factory, _, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+        const string unknownId = "ckvclinic00000000000000099";
+
+        var response = await client.SendAsync(PutProfile(unknownId, ValidProfile(), unknownId));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var error = (await ReadJson(response)).RootElement.GetProperty("error");
+        Assert.Equal("CLINIC_NOT_FOUND", error.GetProperty("code").GetString());
     }
 
     [Fact]

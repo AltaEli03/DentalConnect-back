@@ -68,48 +68,89 @@ public class EfClinicRepository(DentalConnectDbContext db) : IClinicRepository
         if (clinic is null)
             return null;
 
-        return new ClinicDetailDto(
-            clinic.Id,
-            clinic.Name,
-            clinic.Description,
-            clinic.Phone,
-            clinic.Email,
-            clinic.Address,
-            clinic.Municipality,
-            clinic.State,
-            clinic.PostalCode,
-            clinic.Latitude,
-            clinic.Longitude,
-            clinic.ImageUrl,
-            clinic.ClinicServices
-                .Where(cs => cs.IsActive && cs.DentalService.IsActive)
-                .Select(cs => new ClinicServiceDetailDto(
-                    cs.DentalService.Id,
-                    cs.DentalService.Name,
-                    cs.DentalService.Description,
-                    cs.DentalService.EstimatedDurationMinutes,
-                    cs.PriceFrom
-                ))
-                .ToList(),
-            clinic.Dentists
-                .Where(d => d.IsActive)
-                .OrderBy(d => d.LastName)
-                .ThenBy(d => d.FirstName)
-                .Select(d => new DentistDto(
-                    d.Id,
-                    d.FirstName,
-                    d.LastName,
-                    d.ProfessionalLicense,
-                    d.Specialty,
-                    d.Biography,
-                    d.ImageUrl,
-                    d.DentistServices.Where(ds => ds.DentalService.IsActive)
-                        .Select(ds => new DentistServiceDto(ds.DentalService.Id, ds.DentalService.Name, ds.DentalService.Description, ds.DentalService.EstimatedDurationMinutes))
-                        .ToList()
-                ))
-                .ToList()
-        );
+        return ToDetail(clinic);
     }
+
+    public async Task<ClinicDetailDto?> UpdateProfileAsync(string id, ClinicProfileUpdate data, CancellationToken ct = default)
+    {
+        var clinic = await db.Clinics
+            .Include(c => c.ClinicServices.Where(cs => cs.IsActive && cs.DentalService.IsActive))
+                .ThenInclude(cs => cs.DentalService)
+            .Include(c => c.Dentists.Where(d => d.IsActive))
+                .ThenInclude(d => d.DentistServices.Where(ds => ds.DentalService.IsActive))
+                    .ThenInclude(ds => ds.DentalService)
+            .FirstOrDefaultAsync(c => c.Id == id && c.IsActive, ct);
+
+        if (clinic is null)
+            return null;
+
+        clinic.Name = data.Name;
+        clinic.Description = data.Description;
+        clinic.Phone = data.Phone;
+        clinic.Email = data.Email;
+        clinic.Address = data.Address;
+        clinic.City = data.City;
+        clinic.Municipality = data.Municipality;
+        clinic.Neighborhood = data.Neighborhood;
+        clinic.State = data.State;
+        clinic.PostalCode = data.PostalCode;
+        clinic.Latitude = data.Latitude;
+        clinic.Longitude = data.Longitude;
+        clinic.WebsiteUrl = data.WebsiteUrl;
+        clinic.FacebookUrl = data.FacebookUrl;
+        clinic.InstagramUrl = data.InstagramUrl;
+        clinic.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(ct);
+        return ToDetail(clinic);
+    }
+
+    private static ClinicDetailDto ToDetail(Clinic clinic) => new(
+        clinic.Id,
+        clinic.Name,
+        clinic.Description,
+        clinic.Phone,
+        clinic.Email,
+        clinic.Address,
+        clinic.City,
+        clinic.Neighborhood,
+        clinic.Municipality,
+        clinic.State,
+        clinic.PostalCode,
+        clinic.Latitude,
+        clinic.Longitude,
+        clinic.ImageUrl,
+        clinic.WebsiteUrl,
+        clinic.FacebookUrl,
+        clinic.InstagramUrl,
+        clinic.ClinicServices
+            .Where(cs => cs.IsActive && cs.DentalService.IsActive)
+            .Select(cs => new ClinicServiceDetailDto(
+                cs.DentalService.Id,
+                cs.DentalService.Name,
+                cs.DentalService.Description,
+                cs.DentalService.EstimatedDurationMinutes,
+                cs.PriceFrom
+            ))
+            .ToList(),
+        clinic.Dentists
+            .Where(d => d.IsActive)
+            .OrderBy(d => d.LastName)
+            .ThenBy(d => d.FirstName)
+            .Select(d => new DentistDto(
+                d.Id,
+                d.FirstName,
+                d.LastName,
+                d.ProfessionalLicense,
+                d.Specialty,
+                d.Biography,
+                d.ImageUrl,
+                d.DentistServices.Where(ds => ds.DentalService.IsActive)
+                    .Select(ds => new DentistServiceDto(ds.DentalService.Id, ds.DentalService.Name, ds.DentalService.Description, ds.DentalService.EstimatedDurationMinutes))
+                    .ToList()
+            ))
+            .ToList()
+    );
 }
 
 // ponytail: UserPoolId unused by SignUp/ConfirmSignUp/ResendConfirmationCode; use it as JwtBearer authority when a protected endpoint is added.

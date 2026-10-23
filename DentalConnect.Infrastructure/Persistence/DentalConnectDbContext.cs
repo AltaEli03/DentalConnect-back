@@ -28,12 +28,17 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
             entity.Property(e => e.Phone).HasColumnName("phone").IsRequired();
             entity.Property(e => e.Email).HasColumnName("email").IsRequired();
             entity.Property(e => e.Address).HasColumnName("address").IsRequired();
+            entity.Property(e => e.City).HasColumnName("city").IsRequired();
+            entity.Property(e => e.Neighborhood).HasColumnName("neighborhood").IsRequired();
             entity.Property(e => e.Municipality).HasColumnName("municipality").IsRequired();
             entity.Property(e => e.State).HasColumnName("state").IsRequired();
             entity.Property(e => e.PostalCode).HasColumnName("postalCode").IsRequired();
             entity.Property(e => e.Latitude).HasColumnName("latitude");
             entity.Property(e => e.Longitude).HasColumnName("longitude");
             entity.Property(e => e.ImageUrl).HasColumnName("imageUrl");
+            entity.Property(e => e.WebsiteUrl).HasColumnName("websiteUrl");
+            entity.Property(e => e.FacebookUrl).HasColumnName("facebookUrl");
+            entity.Property(e => e.InstagramUrl).HasColumnName("instagramUrl");
             entity.Property(e => e.IsActive).HasColumnName("isActive").HasDefaultValue(true).IsRequired();
             entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("CURRENT_TIMESTAMP").IsRequired();
             entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").IsRequired();

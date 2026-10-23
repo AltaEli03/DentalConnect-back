@@ -33,6 +33,11 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("address");
 
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("city");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -49,9 +54,17 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("email");
 
+                    b.Property<string>("FacebookUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("facebookUrl");
+
                     b.Property<string>("ImageUrl")
                         .HasColumnType("text")
                         .HasColumnName("imageUrl");
+
+                    b.Property<string>("InstagramUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("instagramUrl");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -77,6 +90,11 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("name");
 
+                    b.Property<string>("Neighborhood")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("neighborhood");
+
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasColumnType("text")
@@ -95,6 +113,10 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updatedAt");
+
+                    b.Property<string>("WebsiteUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("websiteUrl");
 
                     b.HasKey("Id")
                         .HasName("Clinic_pkey");

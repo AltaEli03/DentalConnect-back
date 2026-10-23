@@ -45,14 +45,55 @@ public record ClinicDetailDto(
     string Phone,
     string Email,
     string Address,
+    string City,
+    string Neighborhood,
     string Municipality,
     string State,
     string PostalCode,
     double? Latitude,
     double? Longitude,
     string? ImageUrl,
+    string? WebsiteUrl,
+    string? FacebookUrl,
+    string? InstagramUrl,
     IReadOnlyList<ClinicServiceDetailDto> Services,
     IReadOnlyList<DentistDto> Dentists
+);
+
+public record UpdateClinicProfileRequest(
+    string? Name,
+    string? Description,
+    string? Phone,
+    string? Email,
+    string? Address,
+    string? City,
+    string? Municipality,
+    string? Neighborhood,
+    string? State,
+    string? PostalCode,
+    double? Latitude,
+    double? Longitude,
+    string? WebsiteUrl,
+    string? FacebookUrl,
+    string? InstagramUrl
+);
+
+public record ClinicProfileUpdate(
+    string Name,
+    string Description,
+    string Phone,
+    string Email,
+    string Address,
+    string City,
+    string Municipality,
+    string Neighborhood,
+    string State,
+    string PostalCode,
+    double? Latitude,
+    double? Longitude,
+    string? WebsiteUrl,
+    string? FacebookUrl,
+    string? InstagramUrl
 );
 
 public record ClinicSearchFilter(string? Search = null, string? ServiceId = null);
@@ -160,6 +201,80 @@ public static partial class InputValidator
         return email;
     }
 
+    public static ClinicProfileUpdate ValidateClinicProfileUpdate(UpdateClinicProfileRequest? req)
+    {
+        var errors = new Dictionary<string, string[]>();
+        var name = req?.Name?.Trim() ?? string.Empty;
+        var description = req?.Description?.Trim() ?? string.Empty;
+        var phone = req?.Phone?.Trim() ?? string.Empty;
+        var email = req?.Email?.Trim() ?? string.Empty;
+        var address = req?.Address?.Trim() ?? string.Empty;
+        var city = req?.City?.Trim() ?? string.Empty;
+        var municipality = req?.Municipality?.Trim() ?? string.Empty;
+        var neighborhood = req?.Neighborhood?.Trim() ?? string.Empty;
+        var state = req?.State?.Trim() ?? string.Empty;
+        var postalCode = req?.PostalCode?.Trim() ?? string.Empty;
+        var latitude = req?.Latitude;
+        var longitude = req?.Longitude;
+        var websiteUrl = NormalizeOptional(req?.WebsiteUrl);
+        var facebookUrl = NormalizeOptional(req?.FacebookUrl);
+        var instagramUrl = NormalizeOptional(req?.InstagramUrl);
+
+        if (name.Length < 2 || name.Length > 120)
+            errors["name"] = ["Nombre inválido"];
+        if (address.Length < 5 || address.Length > 300)
+            errors["address"] = ["Dirección inválida"];
+        if (phone.Length < 8 || phone.Length > 20)
+            errors["phone"] = ["Teléfono inválido"];
+        if (!IsValidEmail(email))
+            errors["email"] = ["Correo electrónico inválido"];
+        if (description.Length > 1000)
+            errors["description"] = ["Descripción demasiado larga"];
+        if (city.Length > 120)
+            errors["city"] = ["Ciudad inválida"];
+        if (municipality.Length > 120)
+            errors["municipality"] = ["Municipio inválido"];
+        if (neighborhood.Length > 120)
+            errors["neighborhood"] = ["Colonia inválida"];
+        if (state.Length > 120)
+            errors["state"] = ["Estado inválido"];
+        if (postalCode.Length > 0 && (postalCode.Length != 5 || !postalCode.All(char.IsDigit)))
+            errors["postalCode"] = ["El código postal debe tener 5 dígitos"];
+
+        if (latitude.HasValue != longitude.HasValue)
+        {
+            errors["latitude"] = ["Latitud y longitud deben enviarse juntas"];
+            errors["longitude"] = ["Latitud y longitud deben enviarse juntas"];
+        }
+        else if (latitude is { } lat && longitude is { } lng)
+        {
+            if (!double.IsFinite(lat) || lat < -90 || lat > 90)
+                errors["latitude"] = ["Latitud fuera de rango"];
+            if (!double.IsFinite(lng) || lng < -180 || lng > 180)
+                errors["longitude"] = ["Longitud fuera de rango"];
+        }
+
+        if (websiteUrl is not null && !IsHttpsUrl(websiteUrl))
+            errors["websiteUrl"] = ["La URL debe ser absoluta y usar https"];
+        if (facebookUrl is not null && !IsHttpsUrl(facebookUrl))
+            errors["facebookUrl"] = ["La URL debe ser absoluta y usar https"];
+        if (instagramUrl is not null && !IsHttpsUrl(instagramUrl))
+            errors["instagramUrl"] = ["La URL debe ser absoluta y usar https"];
+
+        if (errors.Count > 0)
+            throw new RequestValidationException(errors);
+
+        return new ClinicProfileUpdate(
+            name, description, phone, email, address, city, municipality, neighborhood, state,
+            postalCode, latitude, longitude, websiteUrl, facebookUrl, instagramUrl);
+    }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static bool IsHttpsUrl(string value) =>
+        value.Length <= 500 && Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps;
+
     private static bool IsValidEmail(string email)
     {
         if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
@@ -172,6 +287,7 @@ public interface IClinicRepository
 {
     Task<IReadOnlyList<ClinicSummaryDto>> ListActiveAsync(ClinicSearchFilter filters, CancellationToken ct = default);
     Task<ClinicDetailDto?> FindActiveByIdAsync(string id, CancellationToken ct = default);
+    Task<ClinicDetailDto?> UpdateProfileAsync(string id, ClinicProfileUpdate data, CancellationToken ct = default);
 }
 
 public enum IdentityOutcome
