@@ -137,6 +137,7 @@ authGroup.MapPost("/resend-verification-code", async (ResendCodeRequest? body, A
 });
 app.MapDentistEndpoints();
 app.MapClinicProfileEndpoints();
+app.MapClinicServiceEndpoints();
 app.MapFallback(() => Results.Json(new { error = new { code = "NOT_FOUND", message = "Ruta no encontrada" } }, statusCode: 404));
 app.Run();
 public partial class Program;

@@ -53,6 +53,14 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
             entity.Property(e => e.Description).HasColumnName("description").IsRequired();
             entity.Property(e => e.EstimatedDurationMinutes).HasColumnName("estimatedDurationMinutes").IsRequired();
             entity.Property(e => e.IsActive).HasColumnName("isActive").HasDefaultValue(true).IsRequired();
+            entity.Property(e => e.ClinicId).HasColumnName("clinicId").IsRequired();
+            entity.HasIndex(e => e.ClinicId).HasDatabaseName("DentalService_clinicId_idx");
+
+            entity.HasOne(e => e.Clinic)
+                .WithMany(c => c.DentalServices)
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("DentalService_clinicId_fkey");
         });
 
         modelBuilder.Entity<ClinicService>(entity =>
@@ -62,7 +70,7 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
             entity.Property(e => e.Id).HasColumnName("id").IsRequired();
             entity.Property(e => e.ClinicId).HasColumnName("clinicId").IsRequired();
             entity.Property(e => e.DentalServiceId).HasColumnName("dentalServiceId").IsRequired();
-            entity.Property(e => e.PriceFrom).HasColumnName("priceFrom").HasPrecision(10, 2).IsRequired();
+            entity.Property(e => e.PriceFrom).HasColumnName("priceFrom").HasPrecision(10, 2);
             entity.Property(e => e.IsActive).HasColumnName("isActive").HasDefaultValue(true).IsRequired();
 
             entity.HasIndex(e => new { e.ClinicId, e.DentalServiceId })

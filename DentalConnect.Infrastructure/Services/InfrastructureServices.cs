@@ -105,6 +105,88 @@ public class EfClinicRepository(DentalConnectDbContext db) : IClinicRepository
         return ToDetail(clinic);
     }
 
+    public async Task<IReadOnlyList<ClinicServiceManagementDto>?> ListClinicServicesAsync(string clinicId, CancellationToken ct = default)
+    {
+        if (!await db.Clinics.AnyAsync(c => c.Id == clinicId && c.IsActive, ct))
+            return null;
+
+        return await db.ClinicServices
+            .AsNoTracking()
+            .Where(cs => cs.ClinicId == clinicId)
+            .OrderBy(cs => cs.DentalService.Name)
+            .Select(cs => new ClinicServiceManagementDto(
+                cs.DentalServiceId,
+                cs.DentalService.Name,
+                cs.DentalService.Description,
+                cs.DentalService.EstimatedDurationMinutes,
+                cs.IsActive && cs.DentalService.IsActive,
+                cs.PriceFrom))
+            .ToListAsync(ct);
+    }
+
+    public async Task<ClinicServiceManagementDto?> CreateClinicServiceAsync(string clinicId, ClinicServiceData data, CancellationToken ct = default)
+    {
+        if (!await db.Clinics.AnyAsync(c => c.Id == clinicId && c.IsActive, ct))
+            return null;
+
+        var offer = new ClinicService
+        {
+            ClinicId = clinicId,
+            DentalService = new DentalService
+            {
+                ClinicId = clinicId,
+                Name = data.Name,
+                Description = data.Description,
+                EstimatedDurationMinutes = data.EstimatedDurationMinutes
+            }
+        };
+        db.ClinicServices.Add(offer);
+        await db.SaveChangesAsync(ct);
+        return ToManagementDto(offer);
+    }
+
+    public async Task<ClinicServiceManagementDto?> UpdateClinicServiceAsync(string clinicId, string serviceId, ClinicServiceData data, CancellationToken ct = default)
+    {
+        var offer = await FindOwnedOfferAsync(clinicId, serviceId, ct);
+        if (offer is null)
+            return null;
+
+        offer.DentalService.Name = data.Name;
+        offer.DentalService.Description = data.Description;
+        offer.DentalService.EstimatedDurationMinutes = data.EstimatedDurationMinutes;
+        await db.SaveChangesAsync(ct);
+        return ToManagementDto(offer);
+    }
+
+    public async Task<ClinicServiceManagementDto?> SetClinicServiceStatusAsync(string clinicId, string serviceId, bool isActive, CancellationToken ct = default)
+    {
+        var offer = await FindOwnedOfferAsync(clinicId, serviceId, ct);
+        if (offer is null)
+            return null;
+
+        offer.IsActive = isActive;
+        offer.DentalService.IsActive = isActive;
+        await db.SaveChangesAsync(ct);
+        return ToManagementDto(offer);
+    }
+
+    private Task<ClinicService?> FindOwnedOfferAsync(string clinicId, string serviceId, CancellationToken ct) =>
+        db.ClinicServices
+            .Include(cs => cs.DentalService)
+            .FirstOrDefaultAsync(cs =>
+                cs.ClinicId == clinicId &&
+                cs.DentalServiceId == serviceId &&
+                cs.DentalService.ClinicId == clinicId &&
+                cs.Clinic.IsActive, ct);
+
+    private static ClinicServiceManagementDto ToManagementDto(ClinicService offer) => new(
+        offer.DentalService.Id,
+        offer.DentalService.Name,
+        offer.DentalService.Description,
+        offer.DentalService.EstimatedDurationMinutes,
+        offer.IsActive && offer.DentalService.IsActive,
+        offer.PriceFrom);
+
     private static ClinicDetailDto ToDetail(Clinic clinic) => new(
         clinic.Id,
         clinic.Name,
@@ -230,7 +312,7 @@ public static class DatabaseSeeder
         if (await db.Clinics.AnyAsync(ct))
             return;
 
-        var services = new List<DentalService>
+        var catalog = new List<DentalService>
         {
             new() { Name = "Consulta de valoración", Description = "Evaluación inicial ficticia de salud bucal.", EstimatedDurationMinutes = 30 },
             new() { Name = "Limpieza dental", Description = "Profilaxis preventiva ficticia.", EstimatedDurationMinutes = 45 },
@@ -239,8 +321,7 @@ public static class DatabaseSeeder
             new() { Name = "Odontopediatría", Description = "Consulta ficticia para niñas y niños.", EstimatedDurationMinutes = 40 },
             new() { Name = "Blanqueamiento dental", Description = "Procedimiento estético ficticio.", EstimatedDurationMinutes = 60 }
         };
-        db.DentalServices.AddRange(services);
-        var byName = services.ToDictionary(s => s.Name, s => s);
+        var byName = catalog.ToDictionary(s => s.Name, s => s);
 
         var clinics = new List<Clinic>
         {
@@ -290,15 +371,15 @@ public static class DatabaseSeeder
         db.Clinics.AddRange(clinics);
 
         db.ClinicServices.AddRange(
-            new ClinicService { ClinicId = clinics[0].Id, DentalServiceId = byName["Consulta de valoración"].Id, PriceFrom = 450m },
-            new ClinicService { ClinicId = clinics[0].Id, DentalServiceId = byName["Limpieza dental"].Id, PriceFrom = 700m },
-            new ClinicService { ClinicId = clinics[0].Id, DentalServiceId = byName["Blanqueamiento dental"].Id, PriceFrom = 2600m },
-            new ClinicService { ClinicId = clinics[1].Id, DentalServiceId = byName["Consulta de valoración"].Id, PriceFrom = 500m },
-            new ClinicService { ClinicId = clinics[1].Id, DentalServiceId = byName["Ortodoncia"].Id, PriceFrom = 650m },
-            new ClinicService { ClinicId = clinics[1].Id, DentalServiceId = byName["Endodoncia"].Id, PriceFrom = 3200m },
-            new ClinicService { ClinicId = clinics[2].Id, DentalServiceId = byName["Consulta de valoración"].Id, PriceFrom = 400m },
-            new ClinicService { ClinicId = clinics[2].Id, DentalServiceId = byName["Odontopediatría"].Id, PriceFrom = 600m },
-            new ClinicService { ClinicId = clinics[2].Id, DentalServiceId = byName["Limpieza dental"].Id, PriceFrom = 650m }
+            Offer(clinics[0], byName["Consulta de valoración"], 450m),
+            Offer(clinics[0], byName["Limpieza dental"], 700m),
+            Offer(clinics[0], byName["Blanqueamiento dental"], 2600m),
+            Offer(clinics[1], byName["Consulta de valoración"], 500m),
+            Offer(clinics[1], byName["Ortodoncia"], 650m),
+            Offer(clinics[1], byName["Endodoncia"], 3200m),
+            Offer(clinics[2], byName["Consulta de valoración"], 400m),
+            Offer(clinics[2], byName["Odontopediatría"], 600m),
+            Offer(clinics[2], byName["Limpieza dental"], 650m)
         );
 
         db.Dentists.AddRange(
@@ -346,4 +427,17 @@ public static class DatabaseSeeder
 
         await db.SaveChangesAsync(ct);
     }
+
+    private static ClinicService Offer(Clinic clinic, DentalService template, decimal priceFrom) => new()
+    {
+        ClinicId = clinic.Id,
+        PriceFrom = priceFrom,
+        DentalService = new DentalService
+        {
+            ClinicId = clinic.Id,
+            Name = template.Name,
+            Description = template.Description,
+            EstimatedDurationMinutes = template.EstimatedDurationMinutes
+        }
+    };
 }

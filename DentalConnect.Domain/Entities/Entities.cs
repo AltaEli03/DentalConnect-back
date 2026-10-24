@@ -43,16 +43,19 @@ public class Clinic
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public ICollection<ClinicService> ClinicServices { get; set; } = new List<ClinicService>();
+    public ICollection<DentalService> DentalServices { get; set; } = new List<DentalService>();
     public ICollection<Dentist> Dentists { get; set; } = new List<Dentist>();
 }
 
 public class DentalService
 {
     public string Id { get; set; } = CuidGenerator.NewId();
+    public string ClinicId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public int EstimatedDurationMinutes { get; set; }
     public bool IsActive { get; set; } = true;
+    public Clinic Clinic { get; set; } = null!;
     public ICollection<ClinicService> ClinicServices { get; set; } = new List<ClinicService>();
     public ICollection<DentistService> DentistServices { get; set; } = new List<DentistService>();
 }
@@ -62,7 +65,7 @@ public class ClinicService
     public string Id { get; set; } = CuidGenerator.NewId();
     public string ClinicId { get; set; } = string.Empty;
     public string DentalServiceId { get; set; } = string.Empty;
-    public decimal PriceFrom { get; set; }
+    public decimal? PriceFrom { get; set; }
     public bool IsActive { get; set; } = true;
     public Clinic Clinic { get; set; } = null!;
     public DentalService DentalService { get; set; } = null!;

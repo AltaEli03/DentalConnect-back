@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using DentalConnect.Application.Contracts;
+using DentalConnect.Domain.Entities;
 using DentalConnect.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -152,6 +153,55 @@ public class FakeClinicRepository : IClinicRepository
             Address = data.Address
         } : s).ToList();
         return Task.FromResult<ClinicDetailDto?>(Detail);
+    }
+
+    public List<ClinicServiceManagementDto> Offers { get; } =
+    [
+        new("ckvservice0000000000000001", "Limpieza dental", "Profilaxis ficticia.", 45, true, 700m)
+    ];
+
+    private void SyncPublic()
+    {
+        var active = Offers.Where(o => o.IsActive).ToList();
+        Detail = Detail with
+        {
+            Services = active.Select(o => new ClinicServiceDetailDto(o.Id, o.Name, o.Description, o.EstimatedDurationMinutes, o.PriceFrom)).ToList()
+        };
+        Summaries = Summaries.Select(s => s.Id == Detail.Id ? s with
+        {
+            Services = active.Select(o => new ClinicServiceSummaryDto(o.Id, o.Name)).ToList()
+        } : s).ToList();
+    }
+
+    public Task<IReadOnlyList<ClinicServiceManagementDto>?> ListClinicServicesAsync(string clinicId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ClinicServiceManagementDto>?>(clinicId == Detail.Id ? Offers : null);
+
+    public Task<ClinicServiceManagementDto?> CreateClinicServiceAsync(string clinicId, ClinicServiceData data, CancellationToken ct = default)
+    {
+        if (clinicId != Detail.Id)
+            return Task.FromResult<ClinicServiceManagementDto?>(null);
+
+        var created = new ClinicServiceManagementDto(CuidGenerator.NewId(), data.Name, data.Description, data.EstimatedDurationMinutes, true, null);
+        Offers.Add(created);
+        SyncPublic();
+        return Task.FromResult<ClinicServiceManagementDto?>(created);
+    }
+
+    public Task<ClinicServiceManagementDto?> UpdateClinicServiceAsync(string clinicId, string serviceId, ClinicServiceData data, CancellationToken ct = default) =>
+        ChangeOffer(clinicId, serviceId, o => o with { Name = data.Name, Description = data.Description, EstimatedDurationMinutes = data.EstimatedDurationMinutes });
+
+    public Task<ClinicServiceManagementDto?> SetClinicServiceStatusAsync(string clinicId, string serviceId, bool isActive, CancellationToken ct = default) =>
+        ChangeOffer(clinicId, serviceId, o => o with { IsActive = isActive });
+
+    private Task<ClinicServiceManagementDto?> ChangeOffer(string clinicId, string serviceId, Func<ClinicServiceManagementDto, ClinicServiceManagementDto> change)
+    {
+        var index = Offers.FindIndex(o => o.Id == serviceId);
+        if (clinicId != Detail.Id || index < 0)
+            return Task.FromResult<ClinicServiceManagementDto?>(null);
+
+        Offers[index] = change(Offers[index]);
+        SyncPublic();
+        return Task.FromResult<ClinicServiceManagementDto?>(Offers[index]);
     }
 }
 
@@ -428,6 +478,150 @@ public class ApiTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         var error = (await ReadJson(response)).RootElement.GetProperty("error");
         Assert.Equal("CLINIC_NOT_FOUND", error.GetProperty("code").GetString());
+    }
+
+    private static HttpRequestMessage ServiceRequest(HttpMethod method, string path, object? body, string? clinicId, string? role = "CLINIC_ADMIN")
+    {
+        var request = new HttpRequestMessage(method, path);
+        if (body is not null) request.Content = JsonContent.Create(body);
+        if (role is not null) request.Headers.Add("X-Test-Role", role);
+        if (clinicId is not null) request.Headers.Add("X-Test-Clinic", clinicId);
+        return request;
+    }
+
+    [Fact]
+    public async Task CreateClinicService_ValidService_AppearsInPublicDetailWithoutPrice()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+        var clinicId = clinics.Detail.Id;
+
+        var response = await client.SendAsync(ServiceRequest(HttpMethod.Post, $"/api/clinics/{clinicId}/services",
+            new { name = "Blanqueamiento", description = "Procedimiento estético.", estimatedDurationMinutes = 60 }, clinicId));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = (await ReadJson(response)).RootElement.GetProperty("data");
+        Assert.Equal(JsonValueKind.Null, created.GetProperty("priceFrom").ValueKind);
+
+        var detail = (await ReadJson(await client.GetAsync($"/api/clinics/{clinicId}"))).RootElement.GetProperty("data");
+        var publicService = detail.GetProperty("services").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "Blanqueamiento");
+        Assert.Equal(JsonValueKind.Null, publicService.GetProperty("priceFrom").ValueKind);
+    }
+
+    [Fact]
+    public async Task CreateClinicService_ZeroDuration_Returns400AndDoesNotSave()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+        var clinicId = clinics.Detail.Id;
+
+        var response = await client.SendAsync(ServiceRequest(HttpMethod.Post, $"/api/clinics/{clinicId}/services",
+            new { name = "Limpieza", description = "", estimatedDurationMinutes = 0 }, clinicId));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var error = (await ReadJson(response)).RootElement.GetProperty("error");
+        Assert.Equal("VALIDATION_ERROR", error.GetProperty("code").GetString());
+        Assert.True(error.GetProperty("details").GetProperty("fieldErrors").TryGetProperty("estimatedDurationMinutes", out _));
+        Assert.Single(clinics.Offers);
+    }
+
+    [Fact]
+    public async Task CreateClinicService_UnknownClinic_Returns404ClinicNotFound()
+    {
+        var (factory, _, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+        const string unknownId = "ckvclinic00000000000000099";
+
+        var response = await client.SendAsync(ServiceRequest(HttpMethod.Post, $"/api/clinics/{unknownId}/services",
+            new { name = "Limpieza", description = "", estimatedDurationMinutes = 45 }, unknownId));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var error = (await ReadJson(response)).RootElement.GetProperty("error");
+        Assert.Equal("CLINIC_NOT_FOUND", error.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateClinicService_ChangesNameAndDurationInPublicDetail()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+        var clinicId = clinics.Detail.Id;
+
+        var response = await client.SendAsync(ServiceRequest(HttpMethod.Put, $"/api/clinics/{clinicId}/services/ckvservice0000000000000001",
+            new { name = "Limpieza profunda", description = "Profilaxis ficticia.", estimatedDurationMinutes = 60 }, clinicId));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var detail = (await ReadJson(await client.GetAsync($"/api/clinics/{clinicId}"))).RootElement.GetProperty("data");
+        var service = detail.GetProperty("services")[0];
+        Assert.Equal("Limpieza profunda", service.GetProperty("name").GetString());
+        Assert.Equal(60, service.GetProperty("estimatedDurationMinutes").GetInt32());
+    }
+
+    [Fact]
+    public async Task UpdateClinicService_UnknownService_Returns404ServiceNotFound()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+        var clinicId = clinics.Detail.Id;
+
+        var response = await client.SendAsync(ServiceRequest(HttpMethod.Put, $"/api/clinics/{clinicId}/services/ckvservice0000000000000099",
+            new { name = "Limpieza", description = "", estimatedDurationMinutes = 45 }, clinicId));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var error = (await ReadJson(response)).RootElement.GetProperty("error");
+        Assert.Equal("SERVICE_NOT_FOUND", error.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task DeactivateClinicService_HidesFromPublicViewsAndKeepsManagementList()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+        var clinicId = clinics.Detail.Id;
+        var statusPath = $"/api/clinics/{clinicId}/services/ckvservice0000000000000001/status";
+
+        var response = await client.SendAsync(ServiceRequest(HttpMethod.Patch, statusPath, new { isActive = false }, clinicId));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var detail = (await ReadJson(await client.GetAsync($"/api/clinics/{clinicId}"))).RootElement.GetProperty("data");
+        Assert.Empty(detail.GetProperty("services").EnumerateArray());
+        var list = (await ReadJson(await client.GetAsync("/api/clinics"))).RootElement.GetProperty("data");
+        Assert.Empty(list[0].GetProperty("services").EnumerateArray());
+
+        var management = (await ReadJson(await client.SendAsync(ServiceRequest(HttpMethod.Get, $"/api/clinics/{clinicId}/services", null, clinicId)))).RootElement.GetProperty("data");
+        Assert.False(management[0].GetProperty("isActive").GetBoolean());
+
+        response = await client.SendAsync(ServiceRequest(HttpMethod.Patch, statusPath, new { isActive = true }, clinicId));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        detail = (await ReadJson(await client.GetAsync($"/api/clinics/{clinicId}"))).RootElement.GetProperty("data");
+        Assert.Single(detail.GetProperty("services").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task ClinicServiceStatus_OtherClinic_Returns403AndKeepsService()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+
+        var response = await client.SendAsync(ServiceRequest(HttpMethod.Patch,
+            $"/api/clinics/{clinics.Detail.Id}/services/ckvservice0000000000000001/status",
+            new { isActive = false }, "ckvclinic00000000000000002"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var error = (await ReadJson(response)).RootElement.GetProperty("error");
+        Assert.Equal("CLINIC_ACCESS_DENIED", error.GetProperty("code").GetString());
+        Assert.True(clinics.Offers[0].IsActive);
+    }
+
+    [Fact]
+    public async Task ClinicServices_WithoutToken_Returns401()
+    {
+        var (factory, clinics, _) = CreateTestApp();
+        using var client = factory.CreateClient();
+
+        var response = await client.SendAsync(ServiceRequest(HttpMethod.Get, $"/api/clinics/{clinics.Detail.Id}/services", null, null, role: null));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]

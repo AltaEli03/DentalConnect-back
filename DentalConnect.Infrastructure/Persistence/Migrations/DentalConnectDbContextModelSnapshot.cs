@@ -146,7 +146,7 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("isActive");
 
-                    b.Property<decimal>("PriceFrom")
+                    b.Property<decimal?>("PriceFrom")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)")
                         .HasColumnName("priceFrom");
@@ -168,6 +168,11 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("text")
                         .HasColumnName("id");
+
+                    b.Property<string>("ClinicId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("clinicId");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -191,6 +196,9 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("DentalService_pkey");
+
+                    b.HasIndex("ClinicId")
+                        .HasDatabaseName("DentalService_clinicId_idx");
 
                     b.ToTable("DentalService", (string)null);
                 });
@@ -270,6 +278,18 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                     b.Navigation("DentalService");
                 });
 
+            modelBuilder.Entity("DentalConnect.Domain.Entities.DentalService", b =>
+                {
+                    b.HasOne("DentalConnect.Domain.Entities.Clinic", "Clinic")
+                        .WithMany("DentalServices")
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("DentalService_clinicId_fkey");
+
+                    b.Navigation("Clinic");
+                });
+
             modelBuilder.Entity("DentalConnect.Domain.Entities.Dentist", b =>
                 {
                     b.HasOne("DentalConnect.Domain.Entities.Clinic", "Clinic")
@@ -285,6 +305,8 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("DentalConnect.Domain.Entities.Clinic", b =>
                 {
                     b.Navigation("ClinicServices");
+
+                    b.Navigation("DentalServices");
 
                     b.Navigation("Dentists");
                 });

@@ -22,7 +22,7 @@ public record ClinicServiceDetailDto(
     string Name,
     string Description,
     int EstimatedDurationMinutes,
-    decimal PriceFrom
+    decimal? PriceFrom
 );
 
 public record DentistDto(
@@ -95,6 +95,11 @@ public record ClinicProfileUpdate(
     string? FacebookUrl,
     string? InstagramUrl
 );
+
+public record ClinicServiceRequest(string? Name, string? Description, int? EstimatedDurationMinutes);
+public record ClinicServiceStatusRequest(bool? IsActive);
+public record ClinicServiceData(string Name, string Description, int EstimatedDurationMinutes);
+public record ClinicServiceManagementDto(string Id, string Name, string Description, int EstimatedDurationMinutes, bool IsActive, decimal? PriceFrom);
 
 public record ClinicSearchFilter(string? Search = null, string? ServiceId = null);
 
@@ -269,6 +274,33 @@ public static partial class InputValidator
             postalCode, latitude, longitude, websiteUrl, facebookUrl, instagramUrl);
     }
 
+    public static ClinicServiceData ValidateClinicService(ClinicServiceRequest? req)
+    {
+        var errors = new Dictionary<string, string[]>();
+        var name = req?.Name?.Trim() ?? string.Empty;
+        var description = req?.Description?.Trim() ?? string.Empty;
+        var minutes = req?.EstimatedDurationMinutes ?? 0;
+
+        if (name.Length < 2 || name.Length > 120)
+            errors["name"] = ["Nombre inválido"];
+        if (description.Length > 1000)
+            errors["description"] = ["Descripción demasiado larga"];
+        if (minutes <= 0)
+            errors["estimatedDurationMinutes"] = ["La duración debe ser un entero positivo en minutos"];
+
+        if (errors.Count > 0)
+            throw new RequestValidationException(errors);
+
+        return new ClinicServiceData(name, description, minutes);
+    }
+
+    public static bool ValidateClinicServiceStatus(ClinicServiceStatusRequest? req)
+    {
+        if (req?.IsActive is not bool isActive)
+            throw new RequestValidationException(new Dictionary<string, string[]> { ["isActive"] = ["Indica si el servicio está activo"] });
+        return isActive;
+    }
+
     private static string? NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -288,6 +320,10 @@ public interface IClinicRepository
     Task<IReadOnlyList<ClinicSummaryDto>> ListActiveAsync(ClinicSearchFilter filters, CancellationToken ct = default);
     Task<ClinicDetailDto?> FindActiveByIdAsync(string id, CancellationToken ct = default);
     Task<ClinicDetailDto?> UpdateProfileAsync(string id, ClinicProfileUpdate data, CancellationToken ct = default);
+    Task<IReadOnlyList<ClinicServiceManagementDto>?> ListClinicServicesAsync(string clinicId, CancellationToken ct = default);
+    Task<ClinicServiceManagementDto?> CreateClinicServiceAsync(string clinicId, ClinicServiceData data, CancellationToken ct = default);
+    Task<ClinicServiceManagementDto?> UpdateClinicServiceAsync(string clinicId, string serviceId, ClinicServiceData data, CancellationToken ct = default);
+    Task<ClinicServiceManagementDto?> SetClinicServiceStatusAsync(string clinicId, string serviceId, bool isActive, CancellationToken ct = default);
 }
 
 public enum IdentityOutcome
