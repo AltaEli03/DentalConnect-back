@@ -14,7 +14,7 @@ public record ClinicSummaryDto(
     string State,
     string Address,
     string? ImageUrl,
-    IReadOnlyList<ClinicServiceSummaryDto> Services
+    IReadOnlyList<ClinicServiceSummaryDto> Services, string PostalCode = "", double? Latitude = null, double? Longitude = null
 );
 
 public record ClinicServiceDetailDto(

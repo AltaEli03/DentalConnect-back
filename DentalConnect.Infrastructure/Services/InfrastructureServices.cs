@@ -21,7 +21,7 @@ public class EfClinicRepository(DentalConnectDbContext db) : IClinicRepository
             query = query.Where(c =>
                 c.Name.ToLower().Contains(term) ||
                 c.Municipality.ToLower().Contains(term) ||
-                c.State.ToLower().Contains(term));
+                c.State.ToLower().Contains(term) || c.Address.ToLower().Contains(term) || c.PostalCode.ToLower().Contains(term));
         }
 
         if (!string.IsNullOrWhiteSpace(filters.ServiceId))
@@ -50,7 +50,8 @@ public class EfClinicRepository(DentalConnectDbContext db) : IClinicRepository
             c.ClinicServices
                 .Where(cs => cs.IsActive && cs.DentalService.IsActive)
                 .Select(cs => new ClinicServiceSummaryDto(cs.DentalService.Id, cs.DentalService.Name))
-                .ToList()
+                .ToList(),
+            c.PostalCode, c.Latitude, c.Longitude
         )).ToList();
     }
 
@@ -103,7 +104,7 @@ public class EfClinicRepository(DentalConnectDbContext db) : IClinicRepository
                     d.Specialty,
                     d.Biography,
                     d.ImageUrl,
-                    d.DentistServices.Where(ds => ds.DentalService.IsActive)
+                    d.DentistServices.Where(ds => ds.DentalService.IsActive && clinic.ClinicServices.Any(cs => cs.IsActive && cs.DentalServiceId == ds.DentalServiceId))
                         .Select(ds => new DentistServiceDto(ds.DentalService.Id, ds.DentalService.Name, ds.DentalService.Description, ds.DentalService.EstimatedDurationMinutes))
                         .ToList()
                 ))
