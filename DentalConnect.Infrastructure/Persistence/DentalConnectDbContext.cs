@@ -12,7 +12,7 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
     public DbSet<Dentist> Dentists => Set<Dentist>();
     public DbSet<DentistService> DentistServices => Set<DentistService>();
     public DbSet<DentistWeeklySchedule> DentistWeeklySchedules => Set<DentistWeeklySchedule>();
-        public DbSet<DentistScheduleBlock> DentistScheduleBlocks => Set<DentistScheduleBlock>();
+    public DbSet<DentistScheduleBlock> DentistScheduleBlocks => Set<DentistScheduleBlock>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -90,12 +90,58 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
             entity.Property(e => e.Biography).HasColumnName("biography").IsRequired();
             entity.Property(e => e.ImageUrl).HasColumnName("imageUrl");
             entity.Property(e => e.IsActive).HasColumnName("isActive").HasDefaultValue(true).IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt").HasDefaultValueSql("CURRENT_TIMESTAMP").IsRequired();
+            entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt").HasDefaultValueSql("CURRENT_TIMESTAMP").IsRequired();
 
             entity.HasOne(e => e.Clinic)
                 .WithMany(c => c.Dentists)
                 .HasForeignKey(e => e.ClinicId)
                 .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("Dentist_clinicId_fkey");
+        });
+
+        modelBuilder.Entity<DentistService>(entity =>
+        {
+            entity.ToTable("DentistService");
+            entity.HasKey(e => e.Id).HasName("PK_DentistService");
+            entity.HasIndex(e => e.DentalServiceId).HasDatabaseName("IX_DentistService_DentalServiceId");
+            entity.HasIndex(e => new { e.DentistId, e.DentalServiceId })
+                .IsUnique()
+                .HasDatabaseName("IX_DentistService_DentistId_DentalServiceId");
+            entity.HasOne(e => e.Dentist)
+                .WithMany(d => d.DentistServices)
+                .HasForeignKey(e => e.DentistId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_DentistService_Dentist_DentistId");
+            entity.HasOne(e => e.DentalService)
+                .WithMany(s => s.DentistServices)
+                .HasForeignKey(e => e.DentalServiceId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_DentistService_DentalService_DentalServiceId");
+        });
+
+        modelBuilder.Entity<DentistWeeklySchedule>(entity =>
+        {
+            entity.ToTable("DentistWeeklySchedule");
+            entity.HasKey(e => e.Id).HasName("PK_DentistWeeklySchedule");
+            entity.HasIndex(e => e.DentistId).HasDatabaseName("IX_DentistWeeklySchedule_DentistId");
+            entity.HasOne(e => e.Dentist)
+                .WithMany(d => d.WeeklySchedules)
+                .HasForeignKey(e => e.DentistId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_DentistWeeklySchedule_Dentist_DentistId");
+        });
+
+        modelBuilder.Entity<DentistScheduleBlock>(entity =>
+        {
+            entity.ToTable("DentistScheduleBlock");
+            entity.HasKey(e => e.Id).HasName("PK_DentistScheduleBlock");
+            entity.HasIndex(e => e.DentistId).HasDatabaseName("IX_DentistScheduleBlock_DentistId");
+            entity.HasOne(e => e.Dentist)
+                .WithMany(d => d.ScheduleBlocks)
+                .HasForeignKey(e => e.DentistId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_DentistScheduleBlock_Dentist_DentistId");
         });
     }
 
@@ -128,33 +174,24 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
             {
                 var kv = pair.Split('=', 2);
                 if (kv.Length == 2 && kv[0].Equals("schema", StringComparison.OrdinalIgnoreCase))
-                {
                     builder.SearchPath = Uri.UnescapeDataString(kv[1]);
-                }
             }
         }
 
         return builder.ConnectionString;
     }
 
-    public static string BuildConnectionString(
-        string? rawConnectionString,
-        string? host,
-        string? database,
-        string? username,
-        string? password,
-        string? port)
+    public static string BuildConnectionString(string? rawConnectionString, string? host, string? database,
+        string? username, string? password, string? port)
     {
         if (!string.IsNullOrWhiteSpace(rawConnectionString))
             return NormalizeConnectionString(rawConnectionString);
 
         if (string.IsNullOrWhiteSpace(host))
-            return NormalizeConnectionString(
-                "Host=localhost;Port=5432;Database=dentalconnect;Username=dentalconnect;Password=dentalconnect");
+            return NormalizeConnectionString("Host=localhost;Port=5432;Database=dentalconnect;Username=dentalconnect;Password=dentalconnect");
 
         if (string.IsNullOrWhiteSpace(database) || string.IsNullOrWhiteSpace(username) || password is null)
-            throw new InvalidOperationException(
-                "DB_NAME, DB_USERNAME, and DB_PASSWORD are required when DB_HOST is configured.");
+            throw new InvalidOperationException("DB_NAME, DB_USERNAME, and DB_PASSWORD are required when DB_HOST is configured.");
 
         var parsedPort = 5432;
         if (!string.IsNullOrWhiteSpace(port) && !int.TryParse(port, out parsedPort))
@@ -162,12 +199,8 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
 
         return new NpgsqlConnectionStringBuilder
         {
-            Host = host,
-            Port = parsedPort,
-            Database = database,
-            Username = username,
-            Password = password,
-            SslMode = SslMode.VerifyFull
+            Host = host, Port = parsedPort, Database = database, Username = username,
+            Password = password, SslMode = SslMode.VerifyFull
         }.ConnectionString;
     }
 }
