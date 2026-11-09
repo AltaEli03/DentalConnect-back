@@ -80,6 +80,7 @@ public class Dentist
     public ICollection<DentistService> DentistServices { get; set; } = new List<DentistService>();
     public ICollection<DentistWeeklySchedule> WeeklySchedules { get; set; } = new List<DentistWeeklySchedule>();
     public ICollection<DentistScheduleBlock> ScheduleBlocks { get; set; } = new List<DentistScheduleBlock>();
+    public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
 }
 
 public class DentistService
@@ -115,4 +116,31 @@ public class DentistScheduleBlock
     public string? Reason { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public Dentist Dentist { get; set; } = null!;
+}
+
+public class Appointment
+{
+    public string Id { get; set; } = CuidGenerator.NewId();
+    public string Folio { get; set; } = string.Empty;
+    public string PatientSubject { get; set; } = string.Empty;
+    public string ClinicId { get; set; } = string.Empty;
+    public string DentistId { get; set; } = string.Empty;
+    public string DentalServiceId { get; set; } = string.Empty;
+    public DateTimeOffset StartsAt { get; set; }
+    public DateTimeOffset EndsAt { get; set; }
+    public string Status { get; set; } = "PENDING";
+    public string IdempotencyKey { get; set; } = string.Empty;
+    public string RequestFingerprint { get; set; } = string.Empty;
+    public string TimeZoneId { get; set; } = "America/Mexico_City";
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public Dentist Dentist { get; set; } = null!;
+}
+
+public class ClinicNotificationEvent
+{
+    public string Id { get; set; } = CuidGenerator.NewId();
+    public string AppointmentId { get; set; } = string.Empty;
+    public string EventType { get; set; } = "APPOINTMENT_REQUESTED";
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? ProcessedAt { get; set; }
 }

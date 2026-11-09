@@ -14,18 +14,20 @@ public static class PublicAvailabilityRules
         DateOnly firstDay, int days, int durationMinutes,
         IEnumerable<DentistWeeklySchedule> weeklySchedules,
         IEnumerable<DentistScheduleBlock> blocks,
-        TimeZoneInfo timeZone, DateTimeOffset now)
+        TimeZoneInfo timeZone, DateTimeOffset now,
+        IEnumerable<Appointment>? appointments = null)
     {
         if (days is < 1 or > 30) throw new ArgumentOutOfRangeException(nameof(days));
         if (durationMinutes <= 0) throw new ArgumentOutOfRangeException(nameof(durationMinutes));
         var slots = new List<PublicAvailabilitySlot>();
         var blocked = blocks.ToArray();
+        var confirmed = (appointments ?? []).Where(a => a.Status == "CONFIRMED").ToArray();
         for (var offset = 0; offset < days; offset++)
         {
             var date = firstDay.AddDays(offset);
-            foreach (var schedule in weeklySchedules.Where(s => s.DayOfWeek == date.DayOfWeek))
+            foreach (var schedule in weeklySchedules.Where(s => s.DayOfWeek == date.DayOfWeek).OrderBy(s => s.StartsAt))
             {
-                for (var start = schedule.StartsAt; start.AddMinutes(durationMinutes) <= schedule.EndsAt; start = start.AddMinutes(15))
+                for (var start = schedule.StartsAt; start.AddMinutes(durationMinutes) <= schedule.EndsAt; start = start.AddMinutes(durationMinutes))
                 {
                     var end = start.AddMinutes(durationMinutes);
                     if (schedule.BreakStartsAt is { } breakStart && schedule.BreakEndsAt is { } breakEnd && start < breakEnd && end > breakStart) continue;
@@ -34,7 +36,9 @@ public static class PublicAvailabilityRules
                     if (timeZone.IsInvalidTime(localStart) || timeZone.IsInvalidTime(localEnd)) continue;
                     var startUtc = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(localStart, timeZone), TimeSpan.Zero);
                     var endUtc = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(localEnd, timeZone), TimeSpan.Zero);
-                    if (startUtc <= now || blocked.Any(b => startUtc < b.EndsAt && endUtc > b.StartsAt)) continue;
+                    if (startUtc <= now || blocked.Any(b => startUtc < b.EndsAt && endUtc > b.StartsAt) ||
+                        confirmed.Any(a => startUtc < a.EndsAt && endUtc > a.StartsAt) ||
+                        slots.Any(s => startUtc < s.EndsAt && endUtc > s.StartsAt)) continue;
                     slots.Add(new PublicAvailabilitySlot(startUtc, endUtc));
                 }
             }
@@ -51,7 +55,7 @@ public static class PublicAvailabilityEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> GetAsync(string clinicId, string dentistId, string? serviceId, int? days,
+    private static async Task<IResult> GetAsync(string clinicId, string dentistId, string? serviceId, int? days, string? date,
         DentalConnectDbContext db, CancellationToken ct)
     {
         if (!CuidGenerator.IsValid(clinicId) || !CuidGenerator.IsValid(dentistId) || !CuidGenerator.IsValid(serviceId))
@@ -59,15 +63,13 @@ public static class PublicAvailabilityEndpoints
         var horizon = days ?? 14;
         if (horizon is < 1 or > 30)
             return Results.BadRequest(new { error = new { code = "INVALID_DAYS", message = "El periodo debe ser de 1 a 30 días" } });
-        var clinic = await db.Clinics.AsNoTracking().Where(c => c.Id == clinicId && c.IsActive)
-            .Select(c => new { c.Id }).SingleOrDefaultAsync(ct);
+        var clinic = await db.Clinics.AsNoTracking().Where(c => c.Id == clinicId && c.IsActive).Select(c => new { c.Id }).SingleOrDefaultAsync(ct);
         if (clinic is null) return Results.NotFound(new { error = new { code = "CLINIC_NOT_FOUND", message = "Consultorio no disponible" } });
         var dentist = await db.Dentists.AsNoTracking()
             .Where(d => d.Id == dentistId && d.ClinicId == clinicId && d.IsActive)
             .Include(d => d.WeeklySchedules).Include(d => d.ScheduleBlocks)
             .Include(d => d.DentistServices.Where(ds => ds.DentalServiceId == serviceId && ds.DentalService.IsActive))
-                .ThenInclude(ds => ds.DentalService)
-            .SingleOrDefaultAsync(ct);
+                .ThenInclude(ds => ds.DentalService).SingleOrDefaultAsync(ct);
         if (dentist is null) return Results.NotFound(new { error = new { code = "DENTIST_NOT_AVAILABLE", message = "Dentista no disponible" } });
         var service = dentist.DentistServices.Select(ds => ds.DentalService).SingleOrDefault();
         var clinicOffersService = await db.ClinicServices.AsNoTracking().AnyAsync(cs => cs.ClinicId == clinicId && cs.DentalServiceId == serviceId && cs.IsActive && cs.DentalService.IsActive, ct);
@@ -75,8 +77,19 @@ public static class PublicAvailabilityEndpoints
             return Results.BadRequest(new { error = new { code = "INCOMPATIBLE_SERVICE", message = "El servicio no está activo o no lo ofrece este dentista y consultorio" } });
         var zone = TimeZoneInfo.FindSystemTimeZoneById(PublicAvailabilityRules.PilotTimeZoneId);
         var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, zone).DateTime);
-        var data = PublicAvailabilityRules.Generate(localToday, horizon, service.EstimatedDurationMinutes,
-            dentist.WeeklySchedules, dentist.ScheduleBlocks, zone, DateTimeOffset.UtcNow);
+        var firstDay = localToday;
+        if (!string.IsNullOrWhiteSpace(date))
+        {
+            if (!DateOnly.TryParse(date, out firstDay)) return Results.BadRequest(new { error = new { code = "INVALID_DATE", message = "La fecha debe tener formato AAAA-MM-DD" } });
+            if (firstDay < localToday) return Results.BadRequest(new { error = new { code = "PAST_DATE", message = "No se pueden consultar fechas pasadas" } });
+            horizon = 1;
+        }
+        var localEnd = firstDay.AddDays(horizon).ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        var endUtc = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(localEnd, zone), TimeSpan.Zero);
+        var now = DateTimeOffset.UtcNow;
+        var confirmed = await db.Appointments.AsNoTracking().Where(a => a.DentistId == dentistId && a.Status == "CONFIRMED" && a.StartsAt < endUtc && a.EndsAt > now).ToListAsync(ct);
+        var data = PublicAvailabilityRules.Generate(firstDay, horizon, service.EstimatedDurationMinutes,
+            dentist.WeeklySchedules, dentist.ScheduleBlocks, zone, now, confirmed);
         return Results.Ok(new { data, timeZone = PublicAvailabilityRules.PilotTimeZoneId, service = new { service.Id, service.Name, service.EstimatedDurationMinutes } });
     }
 }
