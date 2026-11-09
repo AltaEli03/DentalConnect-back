@@ -13,6 +13,8 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
     public DbSet<DentistService> DentistServices => Set<DentistService>();
     public DbSet<DentistWeeklySchedule> DentistWeeklySchedules => Set<DentistWeeklySchedule>();
     public DbSet<DentistScheduleBlock> DentistScheduleBlocks => Set<DentistScheduleBlock>();
+    public DbSet<Appointment> Appointments => Set<Appointment>();
+    public DbSet<ClinicNotificationEvent> ClinicNotificationEvents => Set<ClinicNotificationEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -142,6 +144,33 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
                 .HasForeignKey(e => e.DentistId)
                 .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_DentistScheduleBlock_Dentist_DentistId");
+        });
+
+        modelBuilder.Entity<Appointment>(entity =>
+        {
+            entity.ToTable("Appointment");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Status).HasMaxLength(24).IsRequired();
+            entity.Property(e => e.Folio).HasMaxLength(32).IsRequired();
+            entity.Property(e => e.PatientSubject).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.IdempotencyKey).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.RequestFingerprint).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.TimeZoneId).HasMaxLength(64).IsRequired();
+            entity.HasIndex(e => e.Folio).IsUnique();
+            entity.HasIndex(e => new { e.PatientSubject, e.IdempotencyKey }).IsUnique();
+            entity.HasIndex(e => new { e.DentistId, e.StartsAt, e.EndsAt, e.Status });
+            entity.HasOne(e => e.Dentist).WithMany(d => d.Appointments).HasForeignKey(e => e.DentistId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Clinic>().WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<DentalService>().WithMany().HasForeignKey(e => e.DentalServiceId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ClinicNotificationEvent>(entity =>
+        {
+            entity.ToTable("ClinicNotificationEvent");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EventType).HasMaxLength(64).IsRequired();
+            entity.HasOne<Appointment>().WithMany().HasForeignKey(e => e.AppointmentId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.AppointmentId, e.EventType }).IsUnique();
         });
     }
 
