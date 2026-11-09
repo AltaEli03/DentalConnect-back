@@ -1,0 +1,54 @@
+name: Sprint 5 backend tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - DentalConnect/**
+      - DentalConnect.Domain/**
+      - DentalConnect.Infrastructure/**
+      - DentalConnect.Tests/**
+      - DentalConnect.slnx
+      - .github/workflows/sprint5-tests.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sprint5-backend-tests
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: dentalconnect_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready -U postgres -d dentalconnect_tests
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore DentalConnect.slnx
+      - name: Build
+        run: dotnet build DentalConnect.slnx --no-restore --configuration Release
+      - name: Test including PostgreSQL concurrency
+        env:
+          TEST_DATABASE_URL: Host=localhost;Port=5432;Database=dentalconnect_tests;Username=postgres
+        run: dotnet test DentalConnect.slnx --no-build --configuration Release
