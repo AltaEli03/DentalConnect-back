@@ -1,0 +1,111 @@
+name: Database migration lifecycle
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'DentalConnect.Infrastructure/**'
+      - 'DentalConnect/**'
+      - 'DentalConnect.slnx'
+      - '.github/workflows/database-migrations.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'DentalConnect.Infrastructure/**'
+      - 'DentalConnect/**'
+      - 'DentalConnect.slnx'
+      - '.github/workflows/database-migrations.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migration-lifecycle:
+    name: Apply, rollback, and reapply migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: dentalconnect_migration_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dentalconnect_migration_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=localhost;Port=5432;Database=dentalconnect_migration_ci;Username=postgres;Password=postgres
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore and build
+        run: |
+          dotnet restore DentalConnect.slnx
+          dotnet build DentalConnect.slnx --configuration Release --no-restore
+      - name: Install EF Core CLI
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.0
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Validate migration apply, rollback, and reapply
+        shell: bash
+        run: |
+          set -euo pipefail
+          EF=(dotnet ef --project DentalConnect.Infrastructure --startup-project DentalConnect)
+          LIST="$("${EF[@]}" migrations list --no-build)"
+          printf '%s\n' "$LIST"
+          mapfile -t IDS < <(printf '%s\n' "$LIST" | sed -n -E 's/^([0-9]{14}_[[:alnum:]_]+).*/\1/p')
+          COUNT="${#IDS[@]}"
+          if (( COUNT < 2 )); then
+            echo 'At least two migrations are required to verify a rollback.' >&2
+            exit 1
+          fi
+          PREVIOUS="${IDS[$((COUNT - 2))]}"
+          LATEST="${IDS[$((COUNT - 1))]}"
+          echo "Latest migration: $LATEST"
+          echo "Rollback target: $PREVIOUS"
+          "${EF[@]}" database update "$LATEST" --no-build
+          APPLIED="$("${EF[@]}" migrations list --no-build)"
+          if grep -F "$LATEST (Pending)" <<< "$APPLIED"; then
+            echo 'Latest migration remained pending after apply.' >&2
+            exit 1
+          fi
+          "${EF[@]}" database update "$PREVIOUS" --no-build
+          ROLLED_BACK="$("${EF[@]}" migrations list --no-build)"
+          if ! grep -F "$LATEST (Pending)" <<< "$ROLLED_BACK"; then
+            echo 'Rollback did not leave the latest migration pending.' >&2
+            exit 1
+          fi
+          "${EF[@]}" database update "$LATEST" --no-build
+          FINAL="$("${EF[@]}" migrations list --no-build)"
+          if grep -F '(Pending)' <<< "$FINAL"; then
+            echo 'A migration remained pending after reapply.' >&2
+            exit 1
+          fi
+          {
+            echo '## PostgreSQL migration lifecycle'
+            echo '- Database: isolated PostgreSQL 16 service container (no production credentials).'
+            echo "- Applied: $LATEST; rolled back to: $PREVIOUS; reapplied: $LATEST."
+            echo '- Result: all repository migrations applied after reapply.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$FINAL" > migration-evidence.txt
+      - name: Preserve migration lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-migration-lifecycle
+          path: migration-evidence.txt
+          if-no-files-found: error
+          retention-days: 90
