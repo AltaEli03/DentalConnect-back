@@ -48,7 +48,44 @@ public class PublicAvailabilityRulesTests
     [Fact]
     public void RejectsInvalidHorizonAndDuration()
     {
+        Assert.Throws<ArgumentOutOfRangeException>(() => PublicAvailabilityRules.Generate(Monday, 0, 30, [], [], Utc, BeforeSlots));
         Assert.Throws<ArgumentOutOfRangeException>(() => PublicAvailabilityRules.Generate(Monday, 31, 30, [], [], Utc, BeforeSlots));
         Assert.Throws<ArgumentOutOfRangeException>(() => PublicAvailabilityRules.Generate(Monday, 1, 0, [], [], Utc, BeforeSlots));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PublicAvailabilityRules.Generate(Monday, 1, -15, [], [], Utc, BeforeSlots));
+    }
+
+    [Fact]
+    public void EmitsOnlyFullIntervalsAndIgnoresSchedulesForOtherWeekdays()
+    {
+        var monday = new DentistWeeklySchedule { DayOfWeek = DayOfWeek.Monday, StartsAt = new TimeOnly(9, 0), EndsAt = new TimeOnly(10, 0) };
+        var tuesday = new DentistWeeklySchedule { DayOfWeek = DayOfWeek.Tuesday, StartsAt = new TimeOnly(13, 0), EndsAt = new TimeOnly(14, 0) };
+        var slots = PublicAvailabilityRules.Generate(Monday, 1, 45, [monday, tuesday], [], Utc, BeforeSlots);
+        var slot = Assert.Single(slots);
+        Assert.Equal(new DateTimeOffset(2026, 10, 26, 9, 0, 0, TimeSpan.Zero), slot.StartsAt);
+        Assert.Equal(TimeSpan.FromMinutes(45), slot.EndsAt - slot.StartsAt);
+    }
+
+    [Fact]
+    public void ExcludesStartedSlotsAndReturnsFutureSlotsInChronologicalOrder()
+    {
+        var monday = new DentistWeeklySchedule { DayOfWeek = DayOfWeek.Monday, StartsAt = new TimeOnly(9, 0), EndsAt = new TimeOnly(10, 0) };
+        var tuesday = new DentistWeeklySchedule { DayOfWeek = DayOfWeek.Tuesday, StartsAt = new TimeOnly(8, 0), EndsAt = new TimeOnly(9, 0) };
+        var now = new DateTimeOffset(2026, 10, 26, 9, 15, 0, TimeSpan.Zero);
+        var slots = PublicAvailabilityRules.Generate(Monday, 2, 30, [tuesday, monday], [], Utc, now);
+        Assert.Equal(3, slots.Count);
+        Assert.Equal(new DateTimeOffset(2026, 10, 26, 9, 30, 0, TimeSpan.Zero), slots[0].StartsAt);
+        Assert.Equal(new DateTimeOffset(2026, 10, 27, 8, 0, 0, TimeSpan.Zero), slots[1].StartsAt);
+        Assert.Equal(new DateTimeOffset(2026, 10, 27, 8, 30, 0, TimeSpan.Zero), slots[2].StartsAt);
+    }
+
+    [Fact]
+    public void ConvertsMexicoCityScheduleToUtcWithoutLosingLocalAppointmentTime()
+    {
+        var clinicTimeZone = TimeZoneInfo.FindSystemTimeZoneById(PublicAvailabilityRules.PilotTimeZoneId);
+        var schedule = new DentistWeeklySchedule { DayOfWeek = DayOfWeek.Monday, StartsAt = new TimeOnly(9, 0), EndsAt = new TimeOnly(10, 0) };
+        var slots = PublicAvailabilityRules.Generate(Monday, 1, 60, [schedule], [], clinicTimeZone, BeforeSlots);
+        var slot = Assert.Single(slots);
+        Assert.Equal(new DateTimeOffset(2026, 10, 26, 15, 0, 0, TimeSpan.Zero), slot.StartsAt);
+        Assert.Equal(new DateTimeOffset(2026, 10, 26, 16, 0, 0, TimeSpan.Zero), slot.EndsAt);
     }
 }
