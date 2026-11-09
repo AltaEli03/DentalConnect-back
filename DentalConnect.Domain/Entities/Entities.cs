@@ -123,12 +123,19 @@ public class Appointment
     public string Id { get; set; } = CuidGenerator.NewId();
     public string Folio { get; set; } = string.Empty;
     public string PatientSubject { get; set; } = string.Empty;
+        public string? PatientFirstName { get; set; }
+    public string? PatientLastName { get; set; }
+    public string? PatientEmail { get; set; }
+    public string? PatientPhone { get; set; }
     public string ClinicId { get; set; } = string.Empty;
     public string DentistId { get; set; } = string.Empty;
     public string DentalServiceId { get; set; } = string.Empty;
     public DateTimeOffset StartsAt { get; set; }
     public DateTimeOffset EndsAt { get; set; }
     public string Status { get; set; } = "PENDING";
+        public string? RejectionReason { get; set; }
+    public DateTimeOffset? RejectedAt { get; set; }
+    public string? RejectedBy { get; set; }
     public string IdempotencyKey { get; set; } = string.Empty;
     public string RequestFingerprint { get; set; } = string.Empty;
     public string TimeZoneId { get; set; } = "America/Mexico_City";
