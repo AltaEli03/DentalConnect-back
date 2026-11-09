@@ -21,7 +21,7 @@ public static class AppointmentEndpoints
 
     private static async Task<IResult> CreateAsync(HttpContext http, CreateAppointmentRequest? body, DentalConnectDbContext db, CancellationToken ct)
     {
-        var patient = http.User.FindFirst("sub")?.Value;
+        var patient = http.User.FindFirst("sub")?.Value ?? http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrWhiteSpace(patient) || http.User.FindFirst("email_verified")?.Value?.ToLowerInvariant() != "true")
             return Results.Unauthorized();
         if (body is null || !CuidGenerator.IsValid(body.ClinicId) || !CuidGenerator.IsValid(body.DentistId) || !CuidGenerator.IsValid(body.DentalServiceId) || body.StartsAt == default)
