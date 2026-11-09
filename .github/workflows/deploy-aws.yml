@@ -96,7 +96,7 @@ jobs:
       - name: Sign in to Amazon ECR
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
-      - name: Build and publish immutable image
+      - name: Reuse or publish immutable image
         id: image
         shell: bash
         env:
@@ -104,8 +104,17 @@ jobs:
         run: |
           set -euo pipefail
           image_uri="$REGISTRY/$AWS_ECR_REPOSITORY:$GITHUB_SHA"
-          docker build --pull --tag "$image_uri" .
-          docker push "$image_uri"
+          existing_digest="$(aws ecr batch-get-image \
+            --repository-name "$AWS_ECR_REPOSITORY" \
+            --image-ids "imageTag=$GITHUB_SHA" \
+            --query 'images[0].imageId.imageDigest' \
+            --output text 2>/dev/null || true)"
+          if [[ -n "$existing_digest" && "$existing_digest" != "None" ]]; then
+            echo "Reusing immutable image $image_uri ($existing_digest)"
+          else
+            docker build --pull --tag "$image_uri" .
+            docker push "$image_uri"
+          fi
           echo "uri=$image_uri" >> "$GITHUB_OUTPUT"
       - name: Register ECS task definition
         id: task
