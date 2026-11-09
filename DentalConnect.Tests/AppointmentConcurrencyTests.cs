@@ -43,8 +43,8 @@ public sealed class AppointmentConcurrencyTests
             }
 
             var results = await Task.WhenAll(Confirm("a"), Confirm("b"));
-            Assert.Single(results.Where(result => result));
-            Assert.Single(results.Where(result => !result));
+            Assert.Single(results, result => result);
+            Assert.Single(results, result => !result);
 
             await using var verify = new NpgsqlConnection(connectionString);
             await verify.OpenAsync();
