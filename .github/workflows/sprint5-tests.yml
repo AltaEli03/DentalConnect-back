@@ -10,6 +10,15 @@ on:
       - DentalConnect.Tests/**
       - DentalConnect.slnx
       - .github/workflows/sprint5-tests.yml
+  push:
+    branches: [main, Sprint-7-Emanuel]
+    paths:
+      - DentalConnect/**
+      - DentalConnect.Domain/**
+      - DentalConnect.Infrastructure/**
+      - DentalConnect.Tests/**
+      - DentalConnect.slnx
+      - .github/workflows/sprint5-tests.yml
 
 permissions:
   contents: read
@@ -21,7 +30,7 @@ concurrency:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
@@ -48,7 +57,25 @@ jobs:
         run: dotnet restore DentalConnect.slnx
       - name: Build
         run: dotnet build DentalConnect.slnx --no-restore --configuration Release
-      - name: Test including PostgreSQL concurrency
+      - name: Test and collect coverage (xUnit + PostgreSQL concurrency)
         env:
           TEST_DATABASE_URL: Host=localhost;Port=5432;Database=dentalconnect_tests;Username=postgres
-        run: dotnet test DentalConnect.slnx --no-build --configuration Release
+        run: dotnet test DentalConnect.slnx --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./TestResults
+      - name: Create coverage report and summary
+        if: always()
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.6
+          reportgenerator "-reports:TestResults/**/coverage.cobertura.xml" "-targetdir:coverage-report" "-reporttypes:MarkdownSummary;Cobertura"
+          if [ -f coverage-report/Summary.md ]; then
+            cat coverage-report/Summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Preserve test and coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-coverage
+          path: |
+            TestResults
+            coverage-report
+          if-no-files-found: warn
+          retention-days: 90
