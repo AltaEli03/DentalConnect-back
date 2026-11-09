@@ -21,7 +21,7 @@ var dbConnectionString = DentalConnectDbContext.BuildConnectionString(
     builder.Configuration["DATABASE_URL"] ?? builder.Configuration.GetConnectionString("DefaultConnection"),
     builder.Configuration["DB_HOST"], builder.Configuration["DB_NAME"], builder.Configuration["DB_USERNAME"],
     builder.Configuration["DB_PASSWORD"], builder.Configuration["DB_PORT"]);
-builder.Services.AddDbContext<DentalConnectDbContext>(options => options.UseNpgsql(dbConnectionString));
+builder.Services.AddDbContext<DentalConnectDbContext>(options => { options.UseNpgsql(dbConnectionString); if (args.Contains("--seed") || args.Contains("--migrate")) options.ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)); });
 
 var cognitoPoolId = builder.Configuration["COGNITO_USER_POOL_ID"];
 var cognitoClientId = builder.Configuration["COGNITO_CLIENT_ID"];
