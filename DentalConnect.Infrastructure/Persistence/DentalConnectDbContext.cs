@@ -153,6 +153,12 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
             entity.Property(e => e.Status).HasMaxLength(24).IsRequired();
             entity.Property(e => e.Folio).HasMaxLength(32).IsRequired();
             entity.Property(e => e.PatientSubject).HasMaxLength(128).IsRequired();
+                        entity.Property(e => e.PatientFirstName).HasMaxLength(100);
+            entity.Property(e => e.PatientLastName).HasMaxLength(100);
+            entity.Property(e => e.PatientEmail).HasMaxLength(320);
+            entity.Property(e => e.PatientPhone).HasMaxLength(32);
+            entity.Property(e => e.RejectionReason).HasMaxLength(250);
+            entity.Property(e => e.RejectedBy).HasMaxLength(128);
             entity.Property(e => e.IdempotencyKey).HasMaxLength(128).IsRequired();
             entity.Property(e => e.RequestFingerprint).HasMaxLength(64).IsRequired();
             entity.Property(e => e.TimeZoneId).HasMaxLength(64).IsRequired();
