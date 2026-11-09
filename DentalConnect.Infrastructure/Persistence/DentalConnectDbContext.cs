@@ -161,6 +161,8 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
             entity.HasIndex(e => new { e.PatientSubject, e.IdempotencyKey }).IsUnique();
             entity.HasIndex(e => new { e.DentistId, e.StartsAt, e.EndsAt, e.Status });
             entity.HasOne(e => e.Dentist).WithMany(d => d.Appointments).HasForeignKey(e => e.DentistId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Clinic>().WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<DentalService>().WithMany().HasForeignKey(e => e.DentalServiceId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ClinicNotificationEvent>(entity =>
