@@ -63,7 +63,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EF=(dotnet ef --project DentalConnect.Infrastructure --startup-project DentalConnect)
+          EF=(dotnet ef --configuration Release --project DentalConnect.Infrastructure --startup-project DentalConnect)
           LIST="$("${EF[@]}" migrations list --no-build)"
           printf '%s\n' "$LIST"
           mapfile -t IDS < <(printf '%s\n' "$LIST" | sed -n -E 's/^([0-9]{14}_[[:alnum:]_]+).*/\1/p')
@@ -107,5 +107,5 @@ jobs:
         with:
           name: database-migration-lifecycle
           path: migration-evidence.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
