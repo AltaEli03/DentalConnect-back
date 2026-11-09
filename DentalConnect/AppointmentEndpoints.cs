@@ -176,7 +176,7 @@ public static class AppointmentEndpoints
             if (appointment.Status != "PENDING") { await tx.RollbackAsync(ct); return Conflict("INVALID_STATUS", "Solo se pueden confirmar solicitudes pendientes"); }
             var dentist = await db.Dentists.Include(d => d.WeeklySchedules).Include(d => d.ScheduleBlocks).SingleOrDefaultAsync(d => d.Id == appointment.DentistId && d.IsActive && d.ClinicId == clinicId, ct);
             if (dentist is null) { await tx.RollbackAsync(ct); return Conflict("DENTIST_UNAVAILABLE", "El dentista ya no está disponible"); }
-                            var service = await db.DentalServices.AsNoTracking().SingleOrDefaultAsync(s => s.Id == appointment.DentalServiceId && s.ClinicId == clinicId && s.IsActive, ct);
+                            var service = await db.DentalServices.AsNoTracking().SingleOrDefaultAsync(s => s.Id == appointment.DentalServiceId && s.IsActive, ct);
                 if (service is null || (appointment.EndsAt - appointment.StartsAt).TotalMinutes != service.EstimatedDurationMinutes)
                 {
                     await tx.RollbackAsync(ct);
