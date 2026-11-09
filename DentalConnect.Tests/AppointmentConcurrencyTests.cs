@@ -9,7 +9,7 @@ public sealed class AppointmentConcurrencyTests
     {
         var connectionString = Environment.GetEnvironmentVariable("TEST_DATABASE_URL");
         if (string.IsNullOrWhiteSpace(connectionString)) return; // CI supplies an isolated PostgreSQL service.
-        var table = ""appt_concurrency_" + Guid.NewGuid().ToString("N") + """;
+        var table = ((char)34) + "appt_concurrency_" + Guid.NewGuid().ToString("N") + ((char)34);
         await using (var setup = new NpgsqlConnection(connectionString))
         {
             await setup.OpenAsync();
