@@ -193,9 +193,9 @@ jobs:
           {
             echo "## DentalConnect .NET API deployment verified"
             echo ""
-            echo "- Commit: `$GITHUB_SHA`"
-            echo "- Branch: `main`"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Branch: main"
             echo "- Runtime: .NET 10 / ASP.NET Core"
             echo "- Database: PostgreSQL with EF Core migrations"
-            echo "- Health check: `GET $API_HEALTH_URL`"
+            echo "- Health check: GET $API_HEALTH_URL"
           } >> "$GITHUB_STEP_SUMMARY"
