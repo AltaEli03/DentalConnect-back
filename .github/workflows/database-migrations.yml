@@ -23,7 +23,7 @@ permissions:
 jobs:
   migration-lifecycle:
     name: Apply, rollback, and reapply migrations
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -31,7 +31,7 @@ jobs:
         env:
           POSTGRES_DB: dentalconnect_migration_ci
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -41,7 +41,7 @@ jobs:
           --health-retries 5
     env:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__DefaultConnection: Host=localhost;Port=5432;Database=dentalconnect_migration_ci;Username=postgres;Password=postgres
+      ConnectionStrings__DefaultConnection: Host=localhost;Port=5432;Database=dentalconnect_migration_ci;Username=postgres
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,33 +63,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EF=(dotnet ef --configuration Release --project DentalConnect.Infrastructure --startup-project DentalConnect)
-          LIST="$("${EF[@]}" migrations list --no-build)"
-          printf '%s\n' "$LIST"
-          mapfile -t IDS < <(printf '%s\n' "$LIST" | sed -n -E 's/^([0-9]{14}_[[:alnum:]_]+).*/\1/p')
-          COUNT="${#IDS[@]}"
+          dotnet ef --configuration Release --project DentalConnect.Infrastructure --startup-project DentalConnect migrations list --no-build > migration-list.txt
+          cat migration-list.txt
+          COUNT=$(grep -E -c '^[0-9]{14}_[[:alnum:]_]+' migration-list.txt || true)
           if (( COUNT < 2 )); then
             echo 'At least two migrations are required to verify a rollback.' >&2
             exit 1
           fi
-          PREVIOUS="${IDS[$((COUNT - 2))]}"
-          LATEST="${IDS[$((COUNT - 1))]}"
+          LATEST=$(grep -E '^[0-9]{14}_[[:alnum:]_]+' migration-list.txt | tail -n 1 | cut -d ' ' -f 1)
+          PREVIOUS=$(grep -E '^[0-9]{14}_[[:alnum:]_]+' migration-list.txt | tail -n 2 | head -n 1 | cut -d ' ' -f 1)
           echo "Latest migration: $LATEST"
           echo "Rollback target: $PREVIOUS"
-          "${EF[@]}" database update "$LATEST" --no-build
-          APPLIED="$("${EF[@]}" migrations list --no-build)"
+          dotnet ef --configuration Release --project DentalConnect.Infrastructure --startup-project DentalConnect database update "$LATEST" --no-build
+          APPLIED=$(dotnet ef --configuration Release --project DentalConnect.Infrastructure --startup-project DentalConnect migrations list --no-build)
           if grep -F "$LATEST (Pending)" <<< "$APPLIED"; then
             echo 'Latest migration remained pending after apply.' >&2
             exit 1
           fi
-          "${EF[@]}" database update "$PREVIOUS" --no-build
-          ROLLED_BACK="$("${EF[@]}" migrations list --no-build)"
+          dotnet ef --configuration Release --project DentalConnect.Infrastructure --startup-project DentalConnect database update "$PREVIOUS" --no-build
+          ROLLED_BACK=$(dotnet ef --configuration Release --project DentalConnect.Infrastructure --startup-project DentalConnect migrations list --no-build)
           if ! grep -F "$LATEST (Pending)" <<< "$ROLLED_BACK"; then
             echo 'Rollback did not leave the latest migration pending.' >&2
             exit 1
           fi
-          "${EF[@]}" database update "$LATEST" --no-build
-          FINAL="$("${EF[@]}" migrations list --no-build)"
+          dotnet ef --configuration Release --project DentalConnect.Infrastructure --startup-project DentalConnect database update "$LATEST" --no-build
+          FINAL=$(dotnet ef --configuration Release --project DentalConnect.Infrastructure --startup-project DentalConnect migrations list --no-build)
           if grep -F '(Pending)' <<< "$FINAL"; then
             echo 'A migration remained pending after reapply.' >&2
             exit 1
