@@ -176,7 +176,13 @@ public static class AppointmentEndpoints
             if (appointment.Status != "PENDING") { await tx.RollbackAsync(ct); return Conflict("INVALID_STATUS", "Solo se pueden confirmar solicitudes pendientes"); }
             var dentist = await db.Dentists.Include(d => d.WeeklySchedules).Include(d => d.ScheduleBlocks).SingleOrDefaultAsync(d => d.Id == appointment.DentistId && d.IsActive && d.ClinicId == clinicId, ct);
             if (dentist is null) { await tx.RollbackAsync(ct); return Conflict("DENTIST_UNAVAILABLE", "El dentista ya no está disponible"); }
-            var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id != appointment.Id && a.PatientSubject == appointment.PatientSubject && a.Status == "CONFIRMED" && a.StartsAt < appointment.EndsAt && a.EndsAt > appointment.StartsAt, ct);
+                            var service = await db.DentalServices.AsNoTracking().SingleOrDefaultAsync(s => s.Id == appointment.DentalServiceId && s.ClinicId == clinicId && s.IsActive, ct);
+                if (service is null || (appointment.EndsAt - appointment.StartsAt).TotalMinutes != service.EstimatedDurationMinutes)
+                {
+                    await tx.RollbackAsync(ct);
+                    return Conflict("SERVICE_CHANGED", "El servicio ya no está activo o su duración cambió; solicita un horario actualizado");
+                }
+var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id != appointment.Id && a.PatientSubject == appointment.PatientSubject && a.Status == "CONFIRMED" && a.StartsAt < appointment.EndsAt && a.EndsAt > appointment.StartsAt, ct);
             if (patientConflict) { await tx.RollbackAsync(ct); return Conflict("PATIENT_CONFLICT", "El paciente ya tiene una cita confirmada en ese intervalo"); }
             var zone = TimeZoneInfo.FindSystemTimeZoneById(PublicAvailabilityRules.PilotTimeZoneId);
             var day = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(appointment.StartsAt, zone).DateTime);
