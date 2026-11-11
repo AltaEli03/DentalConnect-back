@@ -214,6 +214,7 @@ La Fase RED no se commitea sola. Task 3 implementa el núcleo y commitea ambos.
 - Consumes: `AppointmentProposalRules.IsExpired`, `PublicAvailabilityRules.Generate`, `ClinicNotificationEvent`, `SqlState`.
 - Produces:
   - Rutas `POST /api/appointments/{appointmentId}/proposal/accept` y `/reject`.
+  - Ruta `GET /api/appointments/{appointmentId}/proposal` y `GetProposalAsync` (adelantada desde Task 5 para que las pruebas de autorización de Task 2 cierren en verde).
   - `RespondToProposalAsync(string appointmentId, bool accept, HttpContext http, DentalConnectDbContext db, CancellationToken ct) -> Task<IResult>`.
   - `TryGetPatientSubject(HttpContext http, out string subject) -> bool`.
   - `QueueClinicEventAsync(DentalConnectDbContext db, string appointmentId, string eventType, DateTimeOffset now, CancellationToken ct) -> Task`.
@@ -254,6 +255,8 @@ En `MapAppointmentEndpoints`:
 endpoints.MapPost("/api/appointments/{appointmentId}/proposal/accept", AcceptProposalAsync).RequireAuthorization();
 endpoints.MapPost("/api/appointments/{appointmentId}/proposal/reject", RejectProposalAsync).RequireAuthorization();
 ```
+
+Implementar también `GetProposalAsync` (adelanto de Task 5): `TryGetPatientSubject`, `AsNoTracking().SingleOrDefaultAsync(a => a.Id == appointmentId && a.PatientSubject == subject)`, `404` si no existe y `AppointmentResponse(appointment, 200)` si existe. Sin efectos secundarios.
 
 En `RespondToProposalAsync`:
 
@@ -372,17 +375,16 @@ git commit -m "Sprint 7: cubrir conflictos y concurrencia de respuesta (HU-14 ·
 
 ---
 
-### Task 5: Lectura de la propuesta para el paciente
+### Task 5: Contrato de lectura de la propuesta
 
 **Files:**
-- Modify: `DentalConnect/AppointmentEndpoints.cs:23-32`
 - Modify: `DentalConnect.Tests/AppointmentProposalApiTests.cs`
 
 **Interfaces:**
-- Consumes: `AppointmentResponse`, `TryGetPatientSubject`.
-- Produces: `GET /api/appointments/{appointmentId}/proposal`, respuesta `200` con la forma de `AppointmentResponse`.
+- Consumes: `GetProposalAsync` implementado en Task 3.
+- Produces: pruebas de contrato camelCase de `GET /api/appointments/{appointmentId}/proposal`.
 
-- [ ] **Step 1: Write the failing contract tests**
+- [ ] **Step 1: Write the contract tests**
 
 Agregar:
 
@@ -400,7 +402,7 @@ Aserciones:
 - Después de rechazar: `status == "REJECTED"`, `startsAt` original y `proposedStartsAt` conservado.
 - Token de consultorio: cubierto por `GetProposal_ClinicAdminToken_Returns404` de Task 2; `NewClient("CLINIC_ADMIN", ids.ClinicId)` → `404`, igual que otro paciente.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run the contract tests**
 
 Run:
 
@@ -408,23 +410,11 @@ Run:
 TEST_DATABASE_URL=... dotnet test DentalConnect.slnx -c Release --filter FullyQualifiedName~AppointmentProposalApiTests
 ```
 
-Expected: FAIL con `404`; la ruta no existe.
+Expected: PASS. Ruling: no hay RED posible porque la ruta se adelantó a Task 3 para no dejar en rojo las pruebas 401/404 de Task 2. La autorización ya se probó en Task 2; estas pruebas fijan la forma camelCase y que `GET` no tenga efectos secundarios.
 
-- [ ] **Step 3: Implement the read endpoint**
+- [ ] **Step 3: Verify no side effects**
 
-Agregar la ruta:
-
-```csharp
-endpoints.MapGet("/api/appointments/{appointmentId}/proposal", GetProposalAsync).RequireAuthorization();
-```
-
-`GetProposalAsync`:
-
-1. `TryGetPatientSubject`; si falla, `401`.
-2. `AsNoTracking().SingleOrDefaultAsync(a => a.Id == appointmentId && a.PatientSubject == subject)`; si no existe, `404`.
-3. `return AppointmentResponse(appointment, StatusCodes.Status200OK);`
-
-No hacer efectos secundarios en el `GET`: el vencimiento se resuelve al aceptar/rechazar.
+La implementación vive en Task 3 (`GetProposalAsync`); no duplicar la ruta. Confirmar que el `GET` no escribe estado: el vencimiento se resuelve al aceptar/rechazar.
 
 - [ ] **Step 4: Run tests to verify they pass**
 

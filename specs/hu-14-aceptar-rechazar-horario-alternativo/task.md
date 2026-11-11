@@ -14,11 +14,12 @@
 - [x] **T1. Regla de vencimiento.** `AppointmentProposalRules.IsExpired(now, expiresAt)` con borde `<=`; dos pruebas nuevas.
   Verificación: `dotnet test DentalConnect.slnx -c Release --filter FullyQualifiedName~AppointmentProposalRulesTests` → 5/5. Suite completa sin `TEST_DATABASE_URL` → 38 passed / 21 skipped.
 
-- [ ] **T2. Seed y RED de autorización.** `SeedIds.PatientSubject` determinista; pruebas RED de `401`, `404` por endpoint, token de consultorio y `PROPOSAL_NOT_ACTIVE`; control positivo con el dueño.
-  Verificación: el control positivo falla con `404` de ruta ausente, no por compilación; los `404` que pasan en falso se aceptan solo si el control positivo falla. No commit de la Fase RED sola.
+- [x] **T2. Seed y RED de autorización.** `SeedIds.PatientSubject` determinista; pruebas RED de `401`, `404` por endpoint, token de consultorio y `PROPOSAL_NOT_ACTIVE`; control positivo con el dueño.
+  Verificación: RED confirmado con PostgreSQL 16: 4 failed / 26 passed; los `401` reciben `404` de ruta ausente y el control positivo `AcceptProposal_NoActiveProposal_Returns409` falla con `404`. Los `404` que pasan en falso quedan cubiertos por ese control. Al cerrar T3: 34/34 pruebas API verdes. No commit de la Fase RED sola; T3 commitea ambos.
 
-- [ ] **T3. Núcleo aceptar/rechazar.** Rutas `POST .../proposal/accept` y `/reject`, `RespondToProposalAsync`, ownership por `sub`, transacción `Serializable`, guard de vencimiento, eventos `APPOINTMENT_ALTERNATIVE_ACCEPTED`, `APPOINTMENT_ALTERNATIVE_REJECTED` y `APPOINTMENT_ALTERNATIVE_EXPIRED`.
-  Verificación: aceptar mueve `StartsAt/EndsAt` y limpia propuesta; rechazar conserva propuesta y registra `RejectedAt/RejectedBy`; vencido vuelve a `PENDING`. El caso feliz usa token sin rol `PATIENT`.
+- [x] **T3. Núcleo aceptar/rechazar.** Rutas `POST .../proposal/accept` y `/reject`, `RespondToProposalAsync`, ownership por `sub`, transacción `Serializable`, guard de vencimiento, eventos `APPOINTMENT_ALTERNATIVE_ACCEPTED`, `APPOINTMENT_ALTERNATIVE_REJECTED` y `APPOINTMENT_ALTERNATIVE_EXPIRED`.
+  Verificación: aceptar mueve `StartsAt/EndsAt` y limpia propuesta; rechazar conserva propuesta y registra `RejectedAt/RejectedBy`; vencido vuelve a `PENDING`. El caso feliz usa token sin rol `PATIENT`. Suite API 34/34 y suite completa 72/72 con PostgreSQL 16.
+  Ruling: `GET /proposal` se implementó en T3, no en T5, para cerrar en verde las pruebas 401/404 de T2; T5 solo agrega las pruebas de contrato camelCase.
 
 - [ ] **T4. Revalidación y concurrencia.** Aceptar revalida dentista, servicio, duración, jornada, descanso, bloqueos, citas `CONFIRMED` y choque del paciente. Conflictos dejan `PROPOSED`; dos aceptaciones simultáneas dejan una sola `CONFIRMED`; el segundo ciclo de vencimiento reutiliza el evento.
   Verificación: `AcceptProposal_Occupied_Returns409AndKeepsProposed`, `AcceptProposal_BlockOverlap_Returns409`, `AcceptProposal_BreakOverlap_Returns409`, `AcceptProposal_OutsideSchedule_Returns409`, `AcceptProposal_DentistUnavailable_Returns409`, `AcceptProposal_ServiceChanged_Returns409`, `AcceptProposal_PatientConflict_Returns409`, `AcceptProposal_Concurrent_OnlyOneConfirmed`, `ExpireProposal_SecondCycle_ReusesExpiredEvent`.
