@@ -192,6 +192,7 @@ Errores:
 | Commits | rama `13b53b3..HEAD`; hitos: specs `13b53b3`, dominio `b2cd9b6`, migración `1e498dc`, implementación `0c449bd`, refuerzos `4d93dd6`, gates `487d217`/`db887c7`/`c6b4536` |
 | Suite API | corre con `TEST_DATABASE_URL` en `sprint5-tests.yml`; `deploy-aws.yml` la omite |
 | CI de migraciones | PENDIENTE (sin push/PR) |
+| Guardas | `security-reviewer` PASS; `traceability-clerk` OK (MCP de Atlassian no disponible en el worktree, gap ambiental) |
 
 ## Aprobación
 

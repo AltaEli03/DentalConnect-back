@@ -28,8 +28,8 @@
 - [x] **T7. Verificación final.** Build Release 0/0; tests 57/57 (36 no-Postgres + 21 API); ciclo de migraciones verde con destinos explícitos. La suite API solo corre con `TEST_DATABASE_URL`; sin ella se reporta como skipped, no como verde.
   Verificación: `dotnet build DentalConnect.slnx -c Release` y `dotnet test DentalConnect.slnx -c Release` en verde.
 
-- [ ] **T8. Guardas.** `security-reviewer` PASS y `traceability-clerk` OK.
-  Verificación: reportes sin gaps; estado de la spec en `🚧 Borrador con evidencia`.
+- [x] **T8. Guardas.** `security-reviewer` PASS y `traceability-clerk` OK; el gap de Atlassian MCP es ambiental (DENT-13 verificado en la sesión padre).
+  Verificación: reportes sin gaps de código/trazabilidad; estado de la spec en `🚧 Borrador con evidencia`.
 
 ## Pendientes con dueño
 
