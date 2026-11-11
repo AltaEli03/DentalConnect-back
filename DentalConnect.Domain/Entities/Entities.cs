@@ -132,6 +132,9 @@ public class Appointment
     public string DentalServiceId { get; set; } = string.Empty;
     public DateTimeOffset StartsAt { get; set; }
     public DateTimeOffset EndsAt { get; set; }
+    public DateTimeOffset? ProposedStartsAt { get; set; }
+    public DateTimeOffset? ProposedEndsAt { get; set; }
+    public DateTimeOffset? ProposalExpiresAt { get; set; }
     public string Status { get; set; } = "PENDING";
         public string? RejectionReason { get; set; }
     public DateTimeOffset? RejectedAt { get; set; }
