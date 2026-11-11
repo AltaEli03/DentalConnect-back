@@ -3,7 +3,7 @@
 **Spec:** `spec.md`
 **Plan:** `plan.md`
 **Rama:** `feature/DENT-13-proponer-horario-alternativo`.
-**Commits:** `13b53b3` specs, `b2cd9b6` dominio, `1e498dc` migración, `0c449bd` endpoint/pruebas.
+**Commits:** `13b53b3` specs, `b2cd9b6` dominio, `1e498dc` migración, `0c449bd` endpoint/pruebas, `4d93dd6` refuerzos, `66af3db` evidencia.
 
 ## Checklist
 
@@ -14,10 +14,10 @@
   Verificación: apply → revert a `20261109030000_Sprint6ClinicAppointmentReview` → re-apply sin errores en PostgreSQL 16 local.
 
 - [x] **T3. Infraestructura de pruebas y contrato.** `TestAuthHandler`, `PostgresApiFixture` (`ICollectionFixture`), seed determinista con `Folio`/`PatientSubject`/`IdempotencyKey` únicos; pruebas 401/403/404/409 definidas. No commitear la Fase A sola.
-  Verificación: RED confirmado (17 fallos, 1 pase, 404); las pruebas pasan al cerrar T4.
+  Verificación: RED confirmado (17 fallos, 1 pase, 404); al cerrar T4 pasan `Propose_WithoutToken_Returns401`, `Propose_WithoutClinicAdminRole_Returns403`, `Propose_WithoutClinicClaim_Returns403`, `Propose_AppointmentFromAnotherClinic_Returns404`, `Propose_AppointmentFromAnotherClinicWithPastDate_Returns404`, `Propose_InvalidStatus_Returns409`, `Propose_PastAlternative_Returns409` y `Propose_SameStartAsOriginal_Returns409`.
 
 - [x] **T4. Endpoint completo.** `POST /api/appointments/{appointmentId}/propose`, `RequireAuthorization`, `TryGetClinicContext`, validación de dentista/servicio/duración/jornada/descanso/bloqueos/`CONFIRMED`; estado `PROPOSED`, ambos horarios, expiración y evento `APPOINTMENT_ALTERNATIVE_PROPOSED`.
-  Verificación: 18/18 pruebas API en verde.
+  Verificación: 21/21 pruebas API en verde.
 
 - [x] **T5. Proyecciones.** Listado y detalle con `proposedStartsAt`, `proposedEndsAt`, `proposalExpiresAt`; `status=PROPOSED` aceptado. La prueba `ProposedStatusDoesNotBlockAvailability` va en `PublicAvailabilityRulesTests` y no requiere PostgreSQL.
   Verificación: `List_WithProposedStatus_ReturnsProposalFields`, `Detail_ReturnsOriginalAndProposedSchedules`, `ProposedStatusDoesNotBlockAvailability`.
@@ -25,7 +25,7 @@
 - [x] **T6. Concurrencia y evento.** Dos propuestas simultáneas dejan una sola `PROPOSED`; evento reutilizado tras volver a `PENDING` sin violar el índice único.
   Verificación: `Propose_ConcurrentRequests_OnlyOneProposed` y `Propose_ExpiredEvent_IsReused`.
 
-- [x] **T7. Verificación final.** Build Release 0/0; tests 57/57 (39 reglas + 18 API); ciclo de migraciones verde con destinos explícitos. La suite API solo corre con `TEST_DATABASE_URL`; en `deploy-aws.yml` se omite.
+- [x] **T7. Verificación final.** Build Release 0/0; tests 57/57 (36 reglas + 21 API); ciclo de migraciones verde con destinos explícitos. La suite API solo corre con `TEST_DATABASE_URL`; sin ella se reporta como skipped, no como verde.
   Verificación: `dotnet build DentalConnect.slnx -c Release` y `dotnet test DentalConnect.slnx -c Release` en verde.
 
 - [ ] **T8. Guardas.** `security-reviewer` PASS y `traceability-clerk` OK.
@@ -46,4 +46,4 @@
 
 | Fecha | Build | Tests | Migraciones | Commit | Notas |
 |---|---|---|---|---|---|
-| 10-Nov-2026 | 0 errores / 0 advertencias | 57/57 (39 reglas + 18 API) | apply → revert → reapply OK local | `0c449bd` | Suite API con PostgreSQL 16 local; CI de migraciones pendiente de push/PR. |
+| 10-Nov-2026 | 0 errores / 0 advertencias | 57/57 (36 reglas + 21 API) | apply → revert → reapply OK local | `4d93dd6` | Suite API con PostgreSQL 16 local; sin DB se marca skipped; CI de migraciones pendiente de push/PR. |

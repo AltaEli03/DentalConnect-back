@@ -9,6 +9,7 @@
 **Actor:** usuario autorizado del consultorio (`CLINIC_ADMIN`) dueño de la solicitud.
 **Problema:** el horario original no conviene y el consultorio necesita ofrecer una alternativa sin confirmarla ni reservarla.
 **Depende de:** HU-08/DENT-8 (disponibilidad), HU-10/DENT-10 (revisión de solicitudes), TEC-07/DENT-31 (eventos y vencimiento), HU-15/DENT-15 (notificaciones).
+**Dependencias Jira verificadas:** DENT-14 (HU-14 Aceptar o rechazar un horario alternativo), DENT-15 (HU-15 Consultar las notificaciones de mis citas), DENT-31 (TEC-07 Eventos notificaciones y vencimientos).
 
 ## Requisitos
 
@@ -143,12 +144,12 @@ Errores:
 | Requisito | Prueba |
 |---|---|
 | R1 | `Propose_AvailableAlternative_ReturnsProposedWithBothSchedulesAndEvent`; `Propose_OriginalInPastButAlternativeFuture_Returns200` |
-| R2 | `Propose_OccupiedInterval_Returns409AndDoesNotChangeAppointment`; `Propose_BreakOrBlockOverlap_Returns409`; `Propose_OutsideSchedule_Returns409`; `Propose_InactiveDentist_Returns409DentistUnavailable`; `Propose_ServiceDurationChanged_Returns409ServiceChanged` |
+| R2 | `Propose_OccupiedInterval_Returns409AndDoesNotChangeAppointment`; `Propose_BreakOrBlockOverlap_Returns409`; `Propose_OutsideSchedule_Returns409`; `Propose_InactiveDentist_Returns409DentistUnavailable`; `Propose_InactiveService_Returns409ServiceChanged`; `Propose_ServiceDurationChanged_Returns409ServiceChanged` |
 | R3 | `Propose_SecondActiveProposal_Returns409`; `Propose_ConcurrentRequests_OnlyOneProposed` |
 | R4 | `Propose_PastAlternative_Returns409`; `IsPast_RejectsNowAndEarlier` |
 | R5 | `ExpiresAt_Uses24HoursWhenProposedStartIsLater`; `ExpiresAt_UsesProposedStartWhenSooner` |
 | R6 | `Propose_AvailableAlternative_ReturnsProposedWithBothSchedulesAndEvent`; `Propose_ExpiredEvent_IsReused` |
-| R7 | `Propose_WithoutToken_Returns401`; `Propose_WithoutClinicAdminRole_Returns403`; `Propose_AppointmentFromAnotherClinic_Returns404`; `Propose_InvalidStatus_Returns409` |
+| R7 | `Propose_WithoutToken_Returns401`; `Propose_WithoutClinicAdminRole_Returns403`; `Propose_WithoutClinicClaim_Returns403`; `Propose_AppointmentFromAnotherClinic_Returns404`; `Propose_AppointmentFromAnotherClinicWithPastDate_Returns404`; `Propose_InvalidStatus_Returns409` |
 | R8 | `ProposedStatusDoesNotBlockAvailability` |
 | R9 | `Propose_SameStartAsOriginal_Returns409` |
 | Contrato | `List_WithProposedStatus_ReturnsProposalFields`; `Detail_ReturnsOriginalAndProposedSchedules` |
@@ -158,7 +159,7 @@ Errores:
 - `DentalConnect.Tests/PostgresApiFixture.cs` (nuevo, host API + PostgreSQL de CI).
 - `DentalConnect.Tests/AppointmentProposalApiTests.cs` (nuevo; PostgreSQL `TEST_DATABASE_URL`; skip si falta).
 - `DentalConnect.Tests/PublicAvailabilityRulesTests.cs`: agregar caso `PROPOSED`.
-- Migración: ciclo apply → revert → re-apply con destinos explícitos o `database-migrations.yml`. No usar `db-migrations.yml` sin destino mientras el snapshot siga desincronizado.
+- Migración: ciclo apply → revert → re-apply con destinos explícitos o `database-migrations.yml`.
 
 ## Criterios
 
@@ -185,9 +186,10 @@ Errores:
 |---|---|
 | Fecha | 10-Nov-2026 |
 | Build | `dotnet build DentalConnect.slnx -c Release` → 0 errores / 0 advertencias |
-| Tests | `TEST_DATABASE_URL=... dotnet test DentalConnect.slnx -c Release` → 57/57 (39 reglas + 18 API con PostgreSQL) |
+| Tests | `TEST_DATABASE_URL=... dotnet test DentalConnect.slnx -c Release` → 57/57 (36 reglas + 21 API con PostgreSQL) |
+| Tests sin DB | `dotnet test DentalConnect.slnx -c Release` → 36 passed / 21 skipped |
 | Migraciones | apply → revert → reapply OK en PostgreSQL 16 local |
-| Commits | specs `13b53b3`; dominio `b2cd9b6`; migración `1e498dc`; implementación `0c449bd` |
+| Commits | specs `13b53b3`; dominio `b2cd9b6`; migración `1e498dc`; implementación `0c449bd`; refuerzos `4d93dd6`; evidencia `66af3db` |
 | Suite API | corre con `TEST_DATABASE_URL` en `sprint5-tests.yml`; `deploy-aws.yml` la omite |
 | CI de migraciones | PENDIENTE (sin push/PR) |
 

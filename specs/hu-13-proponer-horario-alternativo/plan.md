@@ -23,7 +23,7 @@
 - No agregar paquetes NuGet.
 - No editar migraciones ya aplicadas.
 - Migración manual: el snapshot EF está desincronizado.
-- No usar `dotnet ef database update` sin destino ni el `db-migrations.yml` sin target: falla por `PendingModelChangesWarning`. Usar destinos explícitos o `database-migrations.yml`.
+- No usar `dotnet ef database update` sin destino: falla por `PendingModelChangesWarning`. Usar destinos explícitos o `database-migrations.yml`.
 - Sin `TODO`; usar `NOTE (DENT-14)`, `NOTE (DENT-15)` y `NOTE (DENT-31)`.
 - Build Release con 0 errores y 0 advertencias.
 
@@ -229,7 +229,7 @@ dotnet ef database update 20261110120000_Sprint7AppointmentProposal --project De
 dotnet ef database update 20261109030000_Sprint6ClinicAppointmentReview --project DentalConnect.Infrastructure --startup-project DentalConnect
 dotnet ef database update 20261110120000_Sprint7AppointmentProposal --project DentalConnect.Infrastructure --startup-project DentalConnect
 ```
-Expected: apply, revert and re-apply without errors. En CI, usar `database-migrations.yml` (pasa destinos explícitos) o corregir `db-migrations.yml` antes de confiar en él.
+Expected: apply, revert and re-apply without errors. En CI, usar `database-migrations.yml` (pasa destinos explícitos).
 
 - [ ] **Step 4: Commit**
 
@@ -581,7 +581,7 @@ Nota: la suite API solo corre con `TEST_DATABASE_URL` (`sprint5-tests.yml`). En 
 
 - [ ] **Step 3: Verify the migration cycle**
 
-Ejecutar `database-migrations.yml` o el ciclo local con destinos explícitos (`20261110120000` → `20261109030000` → `20261110120000`). Expected: verde. No usar `db-migrations.yml` sin target mientras el snapshot siga desincronizado.
+Ejecutar `database-migrations.yml` o el ciclo local con destinos explícitos (`20261110120000` → `20261109030000` → `20261110120000`). Expected: verde.
 
 - [ ] **Step 4: Run the security and traceability gates**
 
