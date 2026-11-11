@@ -17,6 +17,9 @@ public sealed record ProposeAlternativeRequest(DateTimeOffset ProposedStartsAt);
 public static class AppointmentEndpoints
 {
     private const string AlternativeProposedEvent = "APPOINTMENT_ALTERNATIVE_PROPOSED";
+    private const string AlternativeAcceptedEvent = "APPOINTMENT_ALTERNATIVE_ACCEPTED";
+    private const string AlternativeRejectedEvent = "APPOINTMENT_ALTERNATIVE_REJECTED";
+    private const string AlternativeExpiredEvent = "APPOINTMENT_ALTERNATIVE_EXPIRED";
     private static readonly string[] AppointmentStatuses = ["PENDING", "CONFIRMED", "REJECTED", "CANCELLED", "PROPOSED"];
     private static readonly string[] ClinicalTerms = ["diagnóstico", "diagnostico", "síntoma", "sintoma", "enfermedad", "medicamento", "tratamiento", "expediente", "historial clínico", "historial clinico"];
 
@@ -28,6 +31,9 @@ public static class AppointmentEndpoints
         endpoints.MapPost("/api/appointments/{appointmentId}/confirm", ConfirmAsync).RequireAuthorization();
         endpoints.MapPost("/api/appointments/{appointmentId}/reject", RejectAsync).RequireAuthorization();
         endpoints.MapPost("/api/appointments/{appointmentId}/propose", ProposeAsync).RequireAuthorization();
+        endpoints.MapGet("/api/appointments/{appointmentId}/proposal", GetProposalAsync).RequireAuthorization();
+        endpoints.MapPost("/api/appointments/{appointmentId}/proposal/accept", AcceptProposalAsync).RequireAuthorization();
+        endpoints.MapPost("/api/appointments/{appointmentId}/proposal/reject", RejectProposalAsync).RequireAuthorization();
         return endpoints;
     }
 
@@ -281,7 +287,6 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
             appointment.ProposedStartsAt = start;
             appointment.ProposedEndsAt = end;
             appointment.ProposalExpiresAt = AppointmentProposalRules.ExpiresAt(now, start);
-            // NOTE (DENT-14): la aceptación/rechazo de la propuesta es de HU-14.
             // NOTE (DENT-15) / NOTE (DENT-31): la entrega al paciente y el vencimiento son de HU-15/TEC-07.
             var notice = await db.ClinicNotificationEvents.SingleOrDefaultAsync(e => e.AppointmentId == appointment.Id && e.EventType == AlternativeProposedEvent, ct);
             if (notice is null)
@@ -302,6 +307,126 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
             catch (InvalidOperationException rollbackError) { Console.Error.WriteLine(rollbackError); }
             return Conflict("APPOINTMENT_CONFLICT", "La solicitud cambió al mismo tiempo; recarga e inténtalo nuevamente");
         }
+    }
+
+    private static async Task<IResult> GetProposalAsync(string appointmentId, HttpContext http, DentalConnectDbContext db, CancellationToken ct)
+    {
+        if (!TryGetPatientSubject(http, out var patient)) return Results.Unauthorized();
+        var appointment = await db.Appointments.AsNoTracking()
+            .SingleOrDefaultAsync(a => a.Id == appointmentId && a.PatientSubject == patient, ct);
+        return appointment is null ? Results.NotFound() : AppointmentResponse(appointment, StatusCodes.Status200OK);
+    }
+
+    private static Task<IResult> AcceptProposalAsync(string appointmentId, HttpContext http, DentalConnectDbContext db, CancellationToken ct) =>
+        RespondToProposalAsync(appointmentId, true, http, db, ct);
+
+    private static Task<IResult> RejectProposalAsync(string appointmentId, HttpContext http, DentalConnectDbContext db, CancellationToken ct) =>
+        RespondToProposalAsync(appointmentId, false, http, db, ct);
+
+    private static async Task<IResult> RespondToProposalAsync(string appointmentId, bool accept, HttpContext http, DentalConnectDbContext db, CancellationToken ct)
+    {
+        if (!TryGetPatientSubject(http, out var patient)) return Results.Unauthorized();
+
+        var now = DateTimeOffset.UtcNow;
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        try
+        {
+            var appointment = await db.Appointments.SingleOrDefaultAsync(a => a.Id == appointmentId && a.PatientSubject == patient, ct);
+            if (appointment is null) return Results.NotFound();
+            if (appointment.Status != "PROPOSED") return Conflict("PROPOSAL_NOT_ACTIVE", "La solicitud no tiene una propuesta activa");
+            if (appointment.ProposedStartsAt is null || appointment.ProposedEndsAt is null || appointment.ProposalExpiresAt is null)
+                return Conflict("PROPOSAL_NOT_ACTIVE", "La propuesta está incompleta; solicita un nuevo horario");
+
+            if (AppointmentProposalRules.IsExpired(now, appointment.ProposalExpiresAt.Value))
+            {
+                appointment.Status = "PENDING";
+                appointment.ProposedStartsAt = null;
+                appointment.ProposedEndsAt = null;
+                appointment.ProposalExpiresAt = null;
+                // NOTE (DENT-31): barrido proactivo y aviso de vencimiento en TEC-07.
+                await QueueClinicEventAsync(db, appointment.Id, AlternativeExpiredEvent, now, ct);
+                await db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+                return Conflict("PROPOSAL_EXPIRED", "La propuesta venció; la solicitud volvió a pendiente");
+            }
+
+            if (accept)
+            {
+                var proposedStart = appointment.ProposedStartsAt.Value.ToUniversalTime();
+                var proposedEnd = appointment.ProposedEndsAt.Value.ToUniversalTime();
+
+                var dentist = await db.Dentists.Include(d => d.WeeklySchedules).Include(d => d.ScheduleBlocks)
+                    .Include(d => d.DentistServices).ThenInclude(ds => ds.DentalService)
+                    .SingleOrDefaultAsync(d => d.Id == appointment.DentistId && d.ClinicId == appointment.ClinicId && d.IsActive, ct);
+                if (dentist is null) return Conflict("DENTIST_UNAVAILABLE", "El dentista ya no está disponible");
+
+                var service = await db.DentalServices.AsNoTracking().SingleOrDefaultAsync(s => s.Id == appointment.DentalServiceId && s.IsActive, ct);
+                var clinicOffers = await db.ClinicServices.AsNoTracking().AnyAsync(cs => cs.ClinicId == appointment.ClinicId && cs.DentalServiceId == appointment.DentalServiceId && cs.IsActive && cs.DentalService.IsActive, ct);
+                var dentistOffers = dentist.DentistServices.Any(ds => ds.DentalServiceId == appointment.DentalServiceId && ds.DentalService.IsActive);
+                var durationMinutes = (int)(proposedEnd - proposedStart).TotalMinutes;
+                if (service is null || service.EstimatedDurationMinutes <= 0 || !clinicOffers || !dentistOffers ||
+                    durationMinutes != service.EstimatedDurationMinutes)
+                    return Conflict("SERVICE_CHANGED", "El servicio ya no está disponible o cambió; solicita un horario actualizado");
+
+                var patientConflict = await db.Appointments.AsNoTracking()
+                    .AnyAsync(a => a.Id != appointment.Id && a.PatientSubject == appointment.PatientSubject &&
+                        a.Status == "CONFIRMED" && a.StartsAt < proposedEnd && a.EndsAt > proposedStart, ct);
+                if (patientConflict) return Conflict("PATIENT_CONFLICT", "El paciente ya tiene una cita confirmada en ese intervalo");
+
+                var zone = TimeZoneInfo.FindSystemTimeZoneById(PublicAvailabilityRules.PilotTimeZoneId);
+                var day = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(proposedStart, zone).DateTime);
+                var confirmed = await db.Appointments.AsNoTracking()
+                    .Where(a => a.DentistId == dentist.Id && a.Status == "CONFIRMED" && a.StartsAt < proposedEnd && a.EndsAt > proposedStart)
+                    .ToListAsync(ct);
+                var slots = PublicAvailabilityRules.Generate(day, 1, service.EstimatedDurationMinutes, dentist.WeeklySchedules, dentist.ScheduleBlocks, zone, now, confirmed);
+                if (!slots.Any(s => s.StartsAt == proposedStart && s.EndsAt == proposedEnd))
+                    return Conflict("SLOT_UNAVAILABLE", "El horario propuesto ya no está disponible");
+
+                appointment.StartsAt = proposedStart;
+                appointment.EndsAt = proposedEnd;
+                appointment.Status = "CONFIRMED";
+                appointment.ProposedStartsAt = null;
+                appointment.ProposedEndsAt = null;
+                appointment.ProposalExpiresAt = null;
+                await QueueClinicEventAsync(db, appointment.Id, AlternativeAcceptedEvent, now, ct);
+            }
+            else
+            {
+                appointment.Status = "REJECTED";
+                appointment.RejectedAt = now;
+                appointment.RejectedBy = patient;
+                await QueueClinicEventAsync(db, appointment.Id, AlternativeRejectedEvent, now, ct);
+            }
+
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return AppointmentResponse(appointment, StatusCodes.Status200OK);
+        }
+        catch (Exception ex) when (SqlState(ex) is "40001" or "23505" or "23P01")
+        {
+            try { await tx.RollbackAsync(ct); }
+            catch (InvalidOperationException rollbackError) { Console.Error.WriteLine(rollbackError); }
+            return Conflict("APPOINTMENT_CONFLICT", "La solicitud cambió al mismo tiempo; recarga e inténtalo nuevamente");
+        }
+    }
+
+    private static bool TryGetPatientSubject(HttpContext http, out string subject)
+    {
+        subject = http.User.FindFirst("sub")?.Value ?? http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(subject);
+    }
+
+    // NOTE (DENT-15): visualización in-app del aviso en HU-15.
+    private static async Task QueueClinicEventAsync(DentalConnectDbContext db, string appointmentId, string eventType, DateTimeOffset now, CancellationToken ct)
+    {
+        var notice = await db.ClinicNotificationEvents.SingleOrDefaultAsync(e => e.AppointmentId == appointmentId && e.EventType == eventType, ct);
+        if (notice is null)
+        {
+            db.ClinicNotificationEvents.Add(new ClinicNotificationEvent { AppointmentId = appointmentId, EventType = eventType, CreatedAt = now });
+            return;
+        }
+        notice.ProcessedAt = null;
+        notice.CreatedAt = now;
     }
 
     private static bool TryGetClinicContext(HttpContext http, out string clinicId, out string actor)

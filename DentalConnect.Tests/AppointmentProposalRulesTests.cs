@@ -28,4 +28,18 @@ public class AppointmentProposalRulesTests
         Assert.True(AppointmentProposalRules.IsPast(Now, Now.AddSeconds(-1)));
         Assert.False(AppointmentProposalRules.IsPast(Now, Now.AddSeconds(1)));
     }
+
+    // DENT-14 R4: el vencimiento es inclusivo; al llegar la hora ya no se puede responder.
+    [Fact]
+    public void IsExpired_RejectsAtOrAfterExpiry()
+    {
+        Assert.True(AppointmentProposalRules.IsExpired(Now, Now));
+        Assert.True(AppointmentProposalRules.IsExpired(Now, Now.AddSeconds(-1)));
+    }
+
+    [Fact]
+    public void IsExpired_AllowsBeforeExpiry()
+    {
+        Assert.False(AppointmentProposalRules.IsExpired(Now, Now.AddSeconds(1)));
+    }
 }
