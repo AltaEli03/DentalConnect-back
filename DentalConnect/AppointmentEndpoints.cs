@@ -244,7 +244,6 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
 
         var now = DateTimeOffset.UtcNow;
         var start = body.ProposedStartsAt.ToUniversalTime();
-        if (AppointmentProposalRules.IsPast(now, start)) return Conflict("PAST_DATE", "La fecha y hora deben ser futuras");
 
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         try
@@ -253,6 +252,7 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
             if (appointment is null) return Results.NotFound();
             if (appointment.Status == "PROPOSED") return Conflict("PROPOSAL_ALREADY_ACTIVE", "Ya existe una propuesta activa para esta solicitud");
             if (appointment.Status != "PENDING") return Conflict("INVALID_STATUS", "Solo se puede proponer sobre solicitudes pendientes");
+            if (AppointmentProposalRules.IsPast(now, start)) return Conflict("PAST_DATE", "La fecha y hora deben ser futuras");
             if (start == appointment.StartsAt) return Conflict("PROPOSAL_SAME_AS_ORIGINAL", "El horario propuesto debe ser distinto del original");
 
             var dentist = await db.Dentists.Include(d => d.WeeklySchedules).Include(d => d.ScheduleBlocks)
@@ -281,6 +281,8 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
             appointment.ProposedStartsAt = start;
             appointment.ProposedEndsAt = end;
             appointment.ProposalExpiresAt = AppointmentProposalRules.ExpiresAt(now, start);
+            // NOTE (DENT-14): la aceptación/rechazo de la propuesta es de HU-14.
+            // NOTE (DENT-15) / NOTE (DENT-31): la entrega al paciente y el vencimiento son de HU-15/TEC-07.
             var notice = await db.ClinicNotificationEvents.SingleOrDefaultAsync(e => e.AppointmentId == appointment.Id && e.EventType == AlternativeProposedEvent, ct);
             if (notice is null)
                 db.ClinicNotificationEvents.Add(new ClinicNotificationEvent { AppointmentId = appointment.Id, EventType = AlternativeProposedEvent });

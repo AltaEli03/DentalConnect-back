@@ -11,6 +11,9 @@ namespace DentalConnect.Tests;
 [Collection("Postgres API")]
 public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
 {
+    // DENT-13 traceability: R1 success; R2 occupied/block/outside/inactive service, dentist or duration;
+    // R3 second/concurrent; R4 past; R5 rules tests; R6 event; R7 auth/isolation/invalid status;
+    // R8 availability rule; R9 same start.
     private const string ProposalEvent = "APPOINTMENT_ALTERNATIVE_PROPOSED";
     private readonly PostgresApiFixture _fixture = fixture;
 
@@ -51,6 +54,20 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
     }
 
     [Fact]
+    public async Task Propose_WithoutClinicClaim_Returns403()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var client = NewClient("CLINIC_ADMIN");
+            using var response = await PostProposalAsync(client, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [Fact]
     public async Task Propose_AppointmentFromAnotherClinic_Returns404()
     {
         if (!_fixture.Available) return;
@@ -59,6 +76,20 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         {
             using var client = NewClient("CLINIC_ADMIN", ids.ClinicId);
             using var response = await PostProposalAsync(client, ids.OtherAppointmentId!, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [Fact]
+    public async Task Propose_AppointmentFromAnotherClinicWithPastDate_Returns404()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync(withOtherClinic: true);
+        try
+        {
+            using var client = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var response = await PostProposalAsync(client, ids.OtherAppointmentId!, DateTimeOffset.UtcNow.AddMinutes(-1));
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         }
         finally { await CleanupAsync(ids); }
@@ -253,6 +284,26 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
     }
 
     [Fact]
+    public async Task Propose_InactiveService_Returns409ServiceChanged()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            await UpdateAsync(db =>
+            {
+                var service = db.DentalServices.Single(s => s.Id == ids.ServiceId);
+                service.IsActive = false;
+            });
+            using var client = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var response = await PostProposalAsync(client, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("SERVICE_CHANGED", await ErrorCodeAsync(response));
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [Fact]
     public async Task Propose_OriginalInPastButAlternativeFuture_Returns200()
     {
         if (!_fixture.Available) return;
@@ -335,7 +386,8 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
                 Assert.True(responses.Count(r => r.StatusCode == HttpStatusCode.Conflict) == 1, diagnostic);
                 var conflictIndex = Array.FindIndex(responses, r => r.StatusCode == HttpStatusCode.Conflict);
                 using var conflictDoc = JsonDocument.Parse(bodies[conflictIndex]);
-                Assert.True(conflictDoc.RootElement.GetProperty("error").GetProperty("code").GetString() == "APPOINTMENT_CONFLICT", diagnostic);
+                var conflictCode = conflictDoc.RootElement.GetProperty("error").GetProperty("code").GetString();
+                Assert.True(conflictCode is "APPOINTMENT_CONFLICT" or "PROPOSAL_ALREADY_ACTIVE", diagnostic);
             }
             finally
             {

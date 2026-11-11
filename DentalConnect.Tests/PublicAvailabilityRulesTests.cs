@@ -45,6 +45,7 @@ public class PublicAvailabilityRulesTests
         Assert.Contains(slots, slot => slot.StartsAt.Hour == 10 && slot.StartsAt.Minute == 0);
     }
 
+    // DENT-13 R8: una propuesta no reserva el intervalo.
     [Fact]
     public void ProposedStatusDoesNotBlockAvailability()
     {
