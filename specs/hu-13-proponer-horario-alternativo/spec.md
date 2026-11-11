@@ -186,7 +186,7 @@ Errores:
 |---|---|
 | Fecha | 10-Nov-2026 |
 | Build | `dotnet build DentalConnect.slnx -c Release` → 0 errores / 0 advertencias |
-| Tests | `TEST_DATABASE_URL=... dotnet test DentalConnect.slnx -c Release` → 57/57 (36 reglas + 21 API con PostgreSQL) |
+| Tests | `TEST_DATABASE_URL=... dotnet test DentalConnect.slnx -c Release` → 57/57 (36 no-Postgres + 21 API con PostgreSQL) |
 | Tests sin DB | `dotnet test DentalConnect.slnx -c Release` → 36 passed / 21 skipped |
 | Migraciones | apply → revert → reapply OK en PostgreSQL 16 local |
 | Commits | specs `13b53b3`; dominio `b2cd9b6`; migración `1e498dc`; implementación `0c449bd`; refuerzos `4d93dd6`; evidencia `66af3db` |

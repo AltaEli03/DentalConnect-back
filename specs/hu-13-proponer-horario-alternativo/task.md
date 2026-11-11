@@ -25,7 +25,7 @@
 - [x] **T6. Concurrencia y evento.** Dos propuestas simultáneas dejan una sola `PROPOSED`; evento reutilizado tras volver a `PENDING` sin violar el índice único.
   Verificación: `Propose_ConcurrentRequests_OnlyOneProposed` y `Propose_ExpiredEvent_IsReused`.
 
-- [x] **T7. Verificación final.** Build Release 0/0; tests 57/57 (36 reglas + 21 API); ciclo de migraciones verde con destinos explícitos. La suite API solo corre con `TEST_DATABASE_URL`; sin ella se reporta como skipped, no como verde.
+- [x] **T7. Verificación final.** Build Release 0/0; tests 57/57 (36 no-Postgres + 21 API); ciclo de migraciones verde con destinos explícitos. La suite API solo corre con `TEST_DATABASE_URL`; sin ella se reporta como skipped, no como verde.
   Verificación: `dotnet build DentalConnect.slnx -c Release` y `dotnet test DentalConnect.slnx -c Release` en verde.
 
 - [ ] **T8. Guardas.** `security-reviewer` PASS y `traceability-clerk` OK.
@@ -46,4 +46,4 @@
 
 | Fecha | Build | Tests | Migraciones | Commit | Notas |
 |---|---|---|---|---|---|
-| 10-Nov-2026 | 0 errores / 0 advertencias | 57/57 (36 reglas + 21 API) | apply → revert → reapply OK local | `4d93dd6` | Suite API con PostgreSQL 16 local; sin DB se marca skipped; CI de migraciones pendiente de push/PR. |
+| 10-Nov-2026 | 0 errores / 0 advertencias | 57/57 (36 no-Postgres + 21 API) | apply → revert → reapply OK local | `4d93dd6` | Suite API con PostgreSQL 16 local; sin DB se marca skipped; CI de migraciones pendiente de push/PR. |
