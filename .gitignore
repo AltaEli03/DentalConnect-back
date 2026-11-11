@@ -51,3 +51,6 @@ TestResults/
 .agents
 openspec
 skills-lock.json
+
+# Planning workspace
+.superpowers/
