@@ -12,10 +12,12 @@ namespace DentalConnect;
 
 public sealed record CreateAppointmentRequest(string ClinicId, string DentistId, string DentalServiceId, DateTimeOffset StartsAt);
 public sealed record RejectAppointmentRequest(string? Reason);
+public sealed record ProposeAlternativeRequest(DateTimeOffset ProposedStartsAt);
 
 public static class AppointmentEndpoints
 {
-    private static readonly string[] AppointmentStatuses = ["PENDING", "CONFIRMED", "REJECTED", "CANCELLED"];
+    private const string AlternativeProposedEvent = "APPOINTMENT_ALTERNATIVE_PROPOSED";
+    private static readonly string[] AppointmentStatuses = ["PENDING", "CONFIRMED", "REJECTED", "CANCELLED", "PROPOSED"];
     private static readonly string[] ClinicalTerms = ["diagnóstico", "diagnostico", "síntoma", "sintoma", "enfermedad", "medicamento", "tratamiento", "expediente", "historial clínico", "historial clinico"];
 
     public static IEndpointRouteBuilder MapAppointmentEndpoints(this IEndpointRouteBuilder endpoints)
@@ -25,6 +27,7 @@ public static class AppointmentEndpoints
         endpoints.MapGet("/api/appointments/{appointmentId}", DetailForClinicAsync).RequireAuthorization();
         endpoints.MapPost("/api/appointments/{appointmentId}/confirm", ConfirmAsync).RequireAuthorization();
         endpoints.MapPost("/api/appointments/{appointmentId}/reject", RejectAsync).RequireAuthorization();
+        endpoints.MapPost("/api/appointments/{appointmentId}/propose", ProposeAsync).RequireAuthorization();
         return endpoints;
     }
 
@@ -138,6 +141,7 @@ public static class AppointmentEndpoints
         var data = await query.OrderBy(x => x.a.CreatedAt).ThenBy(x => x.a.Id).Select(x => new
         {
             id = x.a.Id, folio = x.a.Folio, status = x.a.Status, startsAt = x.a.StartsAt, endsAt = x.a.EndsAt,
+            proposedStartsAt = x.a.ProposedStartsAt, proposedEndsAt = x.a.ProposedEndsAt, proposalExpiresAt = x.a.ProposalExpiresAt,
             receivedAt = x.a.CreatedAt, clinicId = x.a.ClinicId, dentist = new { id = x.d.Id, firstName = x.d.FirstName, lastName = x.d.LastName },
             service = new { id = x.s.Id, name = x.s.Name, estimatedDurationMinutes = x.s.EstimatedDurationMinutes }
         }).ToListAsync(ct);
@@ -161,6 +165,7 @@ public static class AppointmentEndpoints
             clinicId = item.a.ClinicId, dentist = new { id = item.d.Id, firstName = item.d.FirstName, lastName = item.d.LastName },
             service = new { id = item.s.Id, name = item.s.Name, estimatedDurationMinutes = item.s.EstimatedDurationMinutes },
             startsAt = item.a.StartsAt, endsAt = item.a.EndsAt, localStartsAt = localStart, timeZoneId = item.a.TimeZoneId,
+            proposedStartsAt = item.a.ProposedStartsAt, proposedEndsAt = item.a.ProposedEndsAt, proposalExpiresAt = item.a.ProposalExpiresAt,
             rejection = item.a.Status == "REJECTED" ? new { reason = item.a.RejectionReason, rejectedAt = item.a.RejectedAt, rejectedBy = item.a.RejectedBy } : null
         } });
     }
@@ -232,6 +237,71 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
         }
     }
 
+    private static async Task<IResult> ProposeAsync(string appointmentId, ProposeAlternativeRequest? body, HttpContext http, DentalConnectDbContext db, CancellationToken ct)
+    {
+        if (!TryGetClinicContext(http, out var clinicId, out _)) return Results.Forbid();
+        if (body is null || body.ProposedStartsAt == default) return Validation("El horario propuesto es obligatorio");
+
+        var now = DateTimeOffset.UtcNow;
+        var start = body.ProposedStartsAt.ToUniversalTime();
+        if (AppointmentProposalRules.IsPast(now, start)) return Conflict("PAST_DATE", "La fecha y hora deben ser futuras");
+
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        try
+        {
+            var appointment = await db.Appointments.SingleOrDefaultAsync(a => a.Id == appointmentId && a.ClinicId == clinicId, ct);
+            if (appointment is null) return Results.NotFound();
+            if (appointment.Status == "PROPOSED") return Conflict("PROPOSAL_ALREADY_ACTIVE", "Ya existe una propuesta activa para esta solicitud");
+            if (appointment.Status != "PENDING") return Conflict("INVALID_STATUS", "Solo se puede proponer sobre solicitudes pendientes");
+            if (start == appointment.StartsAt) return Conflict("PROPOSAL_SAME_AS_ORIGINAL", "El horario propuesto debe ser distinto del original");
+
+            var dentist = await db.Dentists.Include(d => d.WeeklySchedules).Include(d => d.ScheduleBlocks)
+                .Include(d => d.DentistServices).ThenInclude(ds => ds.DentalService)
+                .SingleOrDefaultAsync(d => d.Id == appointment.DentistId && d.ClinicId == clinicId && d.IsActive, ct);
+            if (dentist is null) return Conflict("DENTIST_UNAVAILABLE", "El dentista ya no está disponible");
+
+            var service = await db.DentalServices.AsNoTracking().SingleOrDefaultAsync(s => s.Id == appointment.DentalServiceId && s.IsActive, ct);
+            var clinicOffers = await db.ClinicServices.AsNoTracking().AnyAsync(cs => cs.ClinicId == clinicId && cs.DentalServiceId == appointment.DentalServiceId && cs.IsActive && cs.DentalService.IsActive, ct);
+            var dentistOffers = dentist.DentistServices.Any(ds => ds.DentalServiceId == appointment.DentalServiceId && ds.DentalService.IsActive);
+            if (service is null || service.EstimatedDurationMinutes <= 0 || !clinicOffers || !dentistOffers ||
+                (appointment.EndsAt - appointment.StartsAt).TotalMinutes != service.EstimatedDurationMinutes)
+                return Conflict("SERVICE_CHANGED", "El servicio ya no está disponible o cambió; solicita un horario actualizado");
+
+            var end = start.AddMinutes(service.EstimatedDurationMinutes);
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(PublicAvailabilityRules.PilotTimeZoneId);
+            var day = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(start, zone).DateTime);
+            var confirmed = await db.Appointments.AsNoTracking()
+                .Where(a => a.DentistId == dentist.Id && a.Status == "CONFIRMED" && a.StartsAt < end && a.EndsAt > start)
+                .ToListAsync(ct);
+            var slots = PublicAvailabilityRules.Generate(day, 1, service.EstimatedDurationMinutes, dentist.WeeklySchedules, dentist.ScheduleBlocks, zone, now, confirmed);
+            if (!slots.Any(s => s.StartsAt == start && s.EndsAt == end))
+                return Conflict("SLOT_UNAVAILABLE", "El horario propuesto no está disponible");
+
+            appointment.Status = "PROPOSED";
+            appointment.ProposedStartsAt = start;
+            appointment.ProposedEndsAt = end;
+            appointment.ProposalExpiresAt = AppointmentProposalRules.ExpiresAt(now, start);
+            var notice = await db.ClinicNotificationEvents.SingleOrDefaultAsync(e => e.AppointmentId == appointment.Id && e.EventType == AlternativeProposedEvent, ct);
+            if (notice is null)
+                db.ClinicNotificationEvents.Add(new ClinicNotificationEvent { AppointmentId = appointment.Id, EventType = AlternativeProposedEvent });
+            else
+            {
+                notice.ProcessedAt = null;
+                notice.CreatedAt = now;
+            }
+
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return AppointmentResponse(appointment, StatusCodes.Status200OK);
+        }
+        catch (Exception ex) when (SqlState(ex) is "40001" or "23505")
+        {
+            try { await tx.RollbackAsync(ct); }
+            catch (InvalidOperationException rollbackError) { Console.Error.WriteLine(rollbackError); }
+            return Conflict("APPOINTMENT_CONFLICT", "La solicitud cambió al mismo tiempo; recarga e inténtalo nuevamente");
+        }
+    }
+
     private static bool TryGetClinicContext(HttpContext http, out string clinicId, out string actor)
     {
         clinicId = http.User.FindFirst("clinic_id")?.Value ?? http.User.FindFirst("custom:clinic_id")?.Value ?? string.Empty;
@@ -246,8 +316,8 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
     {
         PostgresException postgres => postgres.SqlState,
         DbUpdateException { InnerException: PostgresException postgres } => postgres.SqlState,
-        _ => null
+        _ => error.InnerException is null ? null : SqlState(error.InnerException)
     };
-    private static IResult AppointmentResponse(Appointment item, int statusCode) => Results.Json(new { data = new { item.Id, item.Folio, item.Status, item.ClinicId, item.DentistId, item.DentalServiceId, item.StartsAt, item.EndsAt, item.TimeZoneId } }, statusCode: statusCode);
+    private static IResult AppointmentResponse(Appointment item, int statusCode) => Results.Json(new { data = new { item.Id, item.Folio, item.Status, item.ClinicId, item.DentistId, item.DentalServiceId, item.StartsAt, item.EndsAt, item.ProposedStartsAt, item.ProposedEndsAt, item.ProposalExpiresAt, item.TimeZoneId } }, statusCode: statusCode);
     private static IResult Conflict(string code, string message) => Results.Conflict(new { error = new { code, message } });
 }
