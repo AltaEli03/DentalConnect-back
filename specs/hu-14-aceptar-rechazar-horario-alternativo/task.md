@@ -8,11 +8,11 @@
 
 ## Checklist
 
-- [ ] **T0. Specs.** `spec.md`, `plan.md` y `task.md` con cabecera DENT-14, requisitos, contratos, pruebas y límites.
-  Verificación: `git diff --check` sin errores; revisión de que el summary coincide con Jira.
+- [x] **T0. Specs.** `spec.md`, `plan.md` y `task.md` con cabecera DENT-14, requisitos, contratos, pruebas y límites.
+  Verificación: commit `aab9fda`; `traceability-clerk` OK.
 
-- [ ] **T1. Regla de vencimiento.** `AppointmentProposalRules.IsExpired(now, expiresAt)` con borde `<=`; dos pruebas nuevas.
-  Verificación: `dotnet test DentalConnect.slnx -c Release --filter FullyQualifiedName~AppointmentProposalRulesTests` → 5/5.
+- [x] **T1. Regla de vencimiento.** `AppointmentProposalRules.IsExpired(now, expiresAt)` con borde `<=`; dos pruebas nuevas.
+  Verificación: `dotnet test DentalConnect.slnx -c Release --filter FullyQualifiedName~AppointmentProposalRulesTests` → 5/5. Suite completa sin `TEST_DATABASE_URL` → 38 passed / 21 skipped.
 
 - [ ] **T2. Seed y RED de autorización.** `SeedIds.PatientSubject` determinista; pruebas RED de `401`, `404` por endpoint, token de consultorio y `PROPOSAL_NOT_ACTIVE`; control positivo con el dueño.
   Verificación: el control positivo falla con `404` de ruta ausente, no por compilación; los `404` que pasan en falso se aceptan solo si el control positivo falla. No commit de la Fase RED sola.
