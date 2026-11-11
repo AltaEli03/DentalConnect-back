@@ -30,7 +30,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         string? OtherDentistId = null,
         string? OtherAppointmentId = null);
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_WithoutToken_Returns401()
     {
         if (!_fixture.Available) return;
@@ -39,7 +39,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_WithoutClinicAdminRole_Returns403()
     {
         if (!_fixture.Available) return;
@@ -53,7 +53,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_WithoutClinicClaim_Returns403()
     {
         if (!_fixture.Available) return;
@@ -67,7 +67,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_AppointmentFromAnotherClinic_Returns404()
     {
         if (!_fixture.Available) return;
@@ -81,7 +81,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_AppointmentFromAnotherClinicWithPastDate_Returns404()
     {
         if (!_fixture.Available) return;
@@ -95,7 +95,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_InvalidStatus_Returns409()
     {
         if (!_fixture.Available) return;
@@ -115,7 +115,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_PastAlternative_Returns409()
     {
         if (!_fixture.Available) return;
@@ -130,7 +130,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_SameStartAsOriginal_Returns409()
     {
         if (!_fixture.Available) return;
@@ -145,7 +145,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_AvailableAlternative_ReturnsProposedWithBothSchedulesAndEvent()
     {
         if (!_fixture.Available) return;
@@ -175,7 +175,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_SecondActiveProposal_Returns409()
     {
         if (!_fixture.Available) return;
@@ -194,7 +194,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_OccupiedInterval_Returns409AndDoesNotChangeAppointment()
     {
         if (!_fixture.Available) return;
@@ -211,7 +211,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_BreakOrBlockOverlap_Returns409()
     {
         if (!_fixture.Available) return;
@@ -226,7 +226,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_OutsideSchedule_Returns409()
     {
         if (!_fixture.Available) return;
@@ -243,7 +243,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_InactiveDentist_Returns409DentistUnavailable()
     {
         if (!_fixture.Available) return;
@@ -263,7 +263,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_ServiceDurationChanged_Returns409ServiceChanged()
     {
         if (!_fixture.Available) return;
@@ -283,7 +283,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_InactiveService_Returns409ServiceChanged()
     {
         if (!_fixture.Available) return;
@@ -303,7 +303,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_OriginalInPastButAlternativeFuture_Returns200()
     {
         if (!_fixture.Available) return;
@@ -324,7 +324,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task List_WithProposedStatus_ReturnsProposalFields()
     {
         if (!_fixture.Available) return;
@@ -345,7 +345,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Detail_ReturnsOriginalAndProposedSchedules()
     {
         if (!_fixture.Available) return;
@@ -366,7 +366,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_ConcurrentRequests_OnlyOneProposed()
     {
         if (!_fixture.Available) return;
@@ -399,7 +399,7 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Propose_ExpiredEvent_IsReused()
     {
         if (!_fixture.Available) return;

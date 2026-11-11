@@ -14,6 +14,15 @@ namespace DentalConnect.Tests;
 [CollectionDefinition("Postgres API")]
 public sealed class PostgresApiCollection : ICollectionFixture<PostgresApiFixture>;
 
+public sealed class PostgresFactAttribute : FactAttribute
+{
+    public PostgresFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TEST_DATABASE_URL")))
+            Skip = "TEST_DATABASE_URL not set";
+    }
+}
+
 public sealed class PostgresApiFixture : IAsyncLifetime
 {
     public string? ConnectionString { get; } = Environment.GetEnvironmentVariable("TEST_DATABASE_URL");

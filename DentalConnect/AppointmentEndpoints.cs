@@ -250,9 +250,9 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
         {
             var appointment = await db.Appointments.SingleOrDefaultAsync(a => a.Id == appointmentId && a.ClinicId == clinicId, ct);
             if (appointment is null) return Results.NotFound();
+            if (AppointmentProposalRules.IsPast(now, start)) return Conflict("PAST_DATE", "La fecha y hora deben ser futuras");
             if (appointment.Status == "PROPOSED") return Conflict("PROPOSAL_ALREADY_ACTIVE", "Ya existe una propuesta activa para esta solicitud");
             if (appointment.Status != "PENDING") return Conflict("INVALID_STATUS", "Solo se puede proponer sobre solicitudes pendientes");
-            if (AppointmentProposalRules.IsPast(now, start)) return Conflict("PAST_DATE", "La fecha y hora deben ser futuras");
             if (start == appointment.StartsAt) return Conflict("PROPOSAL_SAME_AS_ORIGINAL", "El horario propuesto debe ser distinto del original");
 
             var dentist = await db.Dentists.Include(d => d.WeeklySchedules).Include(d => d.ScheduleBlocks)
