@@ -987,6 +987,71 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
+    // DENT-14 R5/R10: contrato de lectura y ausencia de efectos secundarios.
+    [PostgresFact]
+    public async Task GetProposal_ReturnsBothSchedules()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+
+            using var before = await GetProposalAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.OK, before.StatusCode);
+            var beforeData = (await ReadJsonAsync(before)).RootElement.GetProperty("data");
+            Assert.Equal("PENDING", beforeData.GetProperty("status").GetString());
+            Assert.Equal(JsonValueKind.Null, beforeData.GetProperty("proposedStartsAt").ValueKind);
+            Assert.Equal(JsonValueKind.Null, beforeData.GetProperty("proposedEndsAt").ValueKind);
+            Assert.Equal(JsonValueKind.Null, beforeData.GetProperty("proposalExpiresAt").ValueKind);
+
+            using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+
+            using var after = await GetProposalAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+            var data = (await ReadJsonAsync(after)).RootElement.GetProperty("data");
+            Assert.Equal("PROPOSED", data.GetProperty("status").GetString());
+            Assert.Equal(ids.OriginalStartsAt, data.GetProperty("startsAt").GetDateTimeOffset());
+            Assert.Equal(ids.ProposedStartsAt, data.GetProperty("proposedStartsAt").GetDateTimeOffset());
+            Assert.Equal(ids.ProposedStartsAt.AddMinutes(30), data.GetProperty("proposedEndsAt").GetDateTimeOffset());
+            Assert.NotEqual(JsonValueKind.Null, data.GetProperty("proposalExpiresAt").ValueKind);
+
+            var appointment = await GetAppointmentAsync(ids.AppointmentId);
+            Assert.Equal("PROPOSED", appointment.Status);
+            Assert.Equal(ids.ProposedStartsAt, appointment.ProposedStartsAt);
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
+    public async Task GetProposal_AfterReject_ReturnsRejected()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+
+            using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+
+            using var rejected = await PostRejectAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.OK, rejected.StatusCode);
+
+            using var response = await GetProposalAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var data = (await ReadJsonAsync(response)).RootElement.GetProperty("data");
+            Assert.Equal("REJECTED", data.GetProperty("status").GetString());
+            Assert.Equal(ids.OriginalStartsAt, data.GetProperty("startsAt").GetDateTimeOffset());
+            Assert.Equal(ids.ProposedStartsAt, data.GetProperty("proposedStartsAt").GetDateTimeOffset());
+            Assert.NotEqual(JsonValueKind.Null, data.GetProperty("proposalExpiresAt").ValueKind);
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
     private HttpClient NewClient(string? role = "CLINIC_ADMIN", string? clinicId = null, string subject = "test-user")
     {
         var client = _fixture.Factory!.CreateClient();
