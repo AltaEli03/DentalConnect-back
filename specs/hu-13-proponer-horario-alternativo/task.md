@@ -3,7 +3,7 @@
 **Spec:** `spec.md`
 **Plan:** `plan.md`
 **Rama:** `feature/DENT-13-proponer-horario-alternativo`.
-**Commits:** `13b53b3` specs, `b2cd9b6` dominio, `1e498dc` migración, `0c449bd` endpoint/pruebas, `4d93dd6` refuerzos, `66af3db` evidencia.
+**Commits:** rama `13b53b3..HEAD`; hitos: `13b53b3` specs, `b2cd9b6` dominio, `1e498dc` migración, `0c449bd` endpoint/pruebas, `4d93dd6` refuerzos, `487d217`/`db887c7`/`c6b4536` gates.
 
 ## Checklist
 

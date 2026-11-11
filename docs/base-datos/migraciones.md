@@ -9,15 +9,27 @@ junto con `DentalConnectDbContextModelSnapshot.cs`.
 EF Core migrations es gratuito, open source y ya forma parte de la solución
 (`Microsoft.EntityFrameworkCore.Design` en el proyecto Web y
 `Microsoft.EntityFrameworkCore.Relational` en Infrastructure). No se realizan
-cambios estructurales manuales en el administrador de base de datos.
+cambios estructurales manuales fuera de una migración. La migración de HU-13
+se escribe a mano porque el snapshot de EF no incluye `Appointment`; el DDL
+vive versionado en la migración.
 
 ## Aplicación
 
 ```bash
-dotnet ef database update \
+dotnet run --project DentalConnect -- --migrate
+```
+
+O con destino explícito:
+
+```bash
+dotnet ef database update 20261110120000_Sprint7AppointmentProposal \
   --project DentalConnect.Infrastructure \
   --startup-project DentalConnect
 ```
+
+> No usar `dotnet ef database update` sin destino mientras el snapshot no
+> incluya `Appointment`: EF Core 10 lanza `PendingModelChangesWarning` antes
+> de aplicar nada.
 
 Historial aplicado:
 

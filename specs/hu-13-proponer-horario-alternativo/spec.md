@@ -189,7 +189,7 @@ Errores:
 | Tests | `TEST_DATABASE_URL=... dotnet test DentalConnect.slnx -c Release` → 57/57 (36 no-Postgres + 21 API con PostgreSQL) |
 | Tests sin DB | `dotnet test DentalConnect.slnx -c Release` → 36 passed / 21 skipped |
 | Migraciones | apply → revert → reapply OK en PostgreSQL 16 local |
-| Commits | specs `13b53b3`; dominio `b2cd9b6`; migración `1e498dc`; implementación `0c449bd`; refuerzos `4d93dd6`; evidencia `66af3db` |
+| Commits | rama `13b53b3..HEAD`; hitos: specs `13b53b3`, dominio `b2cd9b6`, migración `1e498dc`, implementación `0c449bd`, refuerzos `4d93dd6`, gates `487d217`/`db887c7`/`c6b4536` |
 | Suite API | corre con `TEST_DATABASE_URL` en `sprint5-tests.yml`; `deploy-aws.yml` la omite |
 | CI de migraciones | PENDIENTE (sin push/PR) |
 
