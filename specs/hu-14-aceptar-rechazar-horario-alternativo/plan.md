@@ -172,6 +172,7 @@ Agregar estos casos con `[PostgresFact]`:
 [PostgresFact] public async Task AcceptProposal_ClinicAdminToken_Returns404()
 [PostgresFact] public async Task RejectProposal_WithoutToken_Returns401()
 [PostgresFact] public async Task RejectProposal_OtherPatient_Returns404()
+[PostgresFact] public async Task RejectProposal_ClinicAdminToken_Returns404()
 [PostgresFact] public async Task GetProposal_WithoutToken_Returns401()
 [PostgresFact] public async Task GetProposal_OtherPatient_Returns404()
 [PostgresFact] public async Task GetProposal_ClinicAdminToken_Returns404()

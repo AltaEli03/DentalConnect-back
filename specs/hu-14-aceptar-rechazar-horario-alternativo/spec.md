@@ -87,7 +87,7 @@ No se agrega el rol `PATIENT`: el piloto no lo emite y HU-09 crea citas solo con
 
 El listado y el detalle del consultorio ya exponen `proposedStartsAt`, `proposedEndsAt` y `proposalExpiresAt`; no cambian. El detalle del consultorio ya expone `rejection` cuando el estado es `REJECTED`, por lo que ve `rejectedAt/rejectedBy` del paciente sin cambios adicionales.
 
-Al cerrar la HU se elimina el `NOTE (DENT-14)` de `ProposeAsync` y se actualiza la fila de pendientes de HU-13; el `NOTE (DENT-15)` y el `NOTE (DENT-31)` siguen vigentes.
+Al cerrar la HU se eliminó la nota de aceptación/rechazo de `ProposeAsync` y se actualizaron las referencias de HU-13; el `NOTE (DENT-15)` y el `NOTE (DENT-31)` siguen vigentes.
 
 ## Contratos
 
@@ -168,7 +168,7 @@ No se devuelve `403`: la pertenencia se resuelve con `sub` y la ausencia de pert
 | R3 | `AcceptProposal_Occupied_Returns409AndKeepsProposed`; `AcceptProposal_BlockOverlap_Returns409`; `AcceptProposal_BreakOverlap_Returns409`; `AcceptProposal_OutsideSchedule_Returns409`; `AcceptProposal_PatientConflict_Returns409`; `AcceptProposal_Concurrent_OnlyOneConfirmed` |
 | R4 | `IsExpired_RejectsAtOrAfterExpiry`; `IsExpired_AllowsBeforeExpiry`; `AcceptProposal_Expired_Returns409AndRevertsToPending`; `RejectProposal_Expired_Returns409AndRevertsToPending`; `AcceptProposal_NoActiveProposal_Returns409` |
 | R5 | `GetProposal_ReturnsBothSchedules`; `GetProposal_ClinicAdminToken_Returns404` |
-| R6 | `AcceptProposal_WithoutToken_Returns401`; `AcceptProposal_OtherPatient_Returns404`; `AcceptProposal_ClinicAdminToken_Returns404`; `RejectProposal_WithoutToken_Returns401`; `RejectProposal_OtherPatient_Returns404`; `GetProposal_WithoutToken_Returns401`; `GetProposal_OtherPatient_Returns404`. El caso feliz `AcceptProposal_ActiveAndFree_ReturnsConfirmedAndEvent` usa token sin rol. |
+| R6 | `AcceptProposal_WithoutToken_Returns401`; `AcceptProposal_OtherPatient_Returns404`; `AcceptProposal_ClinicAdminToken_Returns404`; `RejectProposal_WithoutToken_Returns401`; `RejectProposal_OtherPatient_Returns404`; `RejectProposal_ClinicAdminToken_Returns404`; `GetProposal_WithoutToken_Returns401`; `GetProposal_OtherPatient_Returns404`. El caso feliz `AcceptProposal_ActiveAndFree_ReturnsConfirmedAndEvent` usa token sin rol. |
 | R7 | `AcceptProposal_DentistUnavailable_Returns409`; `AcceptProposal_ServiceChanged_Returns409`; `AcceptProposal_BlockOverlap_Returns409`; `AcceptProposal_BreakOverlap_Returns409`; `AcceptProposal_OutsideSchedule_Returns409` |
 | R8 | `AcceptProposal_ActiveAndFree_ReturnsConfirmedAndEvent`; `RejectProposal_Active_ReturnsRejectedAndRecordsPatient`; `AcceptProposal_Expired_Returns409AndRevertsToPending`; `ExpireProposal_SecondCycle_ReusesExpiredEvent` |
 | R9 | Sin migración: build y suite sin cambios de esquema |
@@ -192,7 +192,7 @@ El seed agrega `PatientSubject` a `SeedIds` y usa un subject determinista para q
 - Sin ciclo de migraciones: no hay cambio de esquema.
 - Pruebas `401` y `404` por endpoint nuevo; ausencia de `403` documentada y probada con token de consultorio.
 - `security-reviewer` PASS y `traceability-clerk` OK.
-- Sin `TODO`; solo `NOTE (DENT-15)` y `NOTE (DENT-31)` vigentes. `NOTE (DENT-14)` se elimina al implementar.
+- Sin `TODO`; solo `NOTE (DENT-15)` y `NOTE (DENT-31)` vigentes. La nota de aceptación/rechazo ya se eliminó.
 
 ## Límites
 
@@ -208,8 +208,8 @@ El seed agrega `PatientSubject` a `SeedIds` y usa un subject determinista para q
 
 | Fecha | Build | Tests | Migraciones | Commit | Notas |
 |---|---|---|---|---|---|
-| 11-Nov-2026 | Pendiente | Pendiente | Sin cambio de esquema | Pendiente | Spec en borrador; no hay implementación todavía. |
+| 11-Nov-2026 | `dotnet build DentalConnect.slnx -c Release` → 0 errores / 0 advertencias | `TEST_DATABASE_URL=... dotnet test DentalConnect.slnx -c Release` → 84/84 (38 no-Postgres + 46 API) | Sin cambio de esquema; sin migración | `aab9fda` specs, `e8260ca` T1, `108be29` T2–T3, `4862bc7` T4, `6497a3c` T5; cierre en HEAD | `security-reviewer` PASS con 4 warnings no bloqueantes; `traceability-clerk` contenido OK y gaps de cierre corregidos. Jira `DENT-14` en `Pruebas`; PR pendiente. |
 
 ## Aprobación
 
-🚧 Borrador. Pendiente de implementación y de revisor indicado por el usuario.
+🚧 Borrador con evidencia. Pendiente de revisor indicado por el usuario.

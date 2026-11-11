@@ -17,7 +17,7 @@
 - **R2 (AC2).** La alternativa se valida contra dentista activo, servicio activo y ofrecido, duración vigente, jornada, descanso, bloqueos y citas `CONFIRMED`. Si el intervalo está ocupado o fuera de jornada, responde `409 SLOT_UNAVAILABLE` y no guarda nada.
 - **R3 (AC3).** Si ya existe una propuesta activa (`Status = PROPOSED`), otra llamada responde `409 PROPOSAL_ALREADY_ACTIVE` y no crea una segunda.
 - **R4 (AC4).** Si `proposedStartsAt <= now` (UTC), responde `409 PAST_DATE` y no guarda nada.
-- **R5.** `ProposalExpiresAt = min(now + 24 h, ProposedStartsAt)`. La aceptación/rechazo de la propuesta es de HU-14/DENT-14 (`NOTE (DENT-14)`). La reversión a `PENDING` y el aviso al consultorio al vencer son de TEC-07/DENT-31 (`NOTE (DENT-31)`).
+- **R5.** `ProposalExpiresAt = min(now + 24 h, ProposedStartsAt)`. La aceptación/rechazo de la propuesta quedó cubierta por HU-14/DENT-14. La reversión a `PENDING` y el aviso al consultorio al vencer son de TEC-07/DENT-31 (`NOTE (DENT-31)`).
 - **R6.** En la misma transacción se registra el evento outbox `APPOINTMENT_ALTERNATIVE_PROPOSED` para la cita. Si ya existe, se reutiliza y se marca no procesado. La entrega al paciente y el worker son de HU-15/DENT-15 (`NOTE (DENT-15)`).
 - **R7.** Solo el `CLINIC_ADMIN` del consultorio dueño puede proponer. Sin token: `401`. Sin rol o claim de consultorio: `403`. Cita inexistente o de otro consultorio: `404` sin datos.
 - **R8.** La propuesta **no reserva** el intervalo: disponibilidad pública y creación de citas siguen bloqueando solo `CONFIRMED`. La aceptación de HU-14 revalida.
@@ -168,11 +168,10 @@ Errores:
 - Ciclo de migraciones en verde.
 - Prueba 401/403 por endpoint nuevo.
 - `security-reviewer` PASS y `traceability-clerk` OK.
-- Sin `TODO`; solo `NOTE (DENT-14)`, `NOTE (DENT-15)`, `NOTE (DENT-31)`.
+- Sin `TODO`; solo `NOTE (DENT-15)` y `NOTE (DENT-31)`.
 
 ## Límites
 
-- Aceptar/rechazar la propuesta: HU-14/DENT-14.
 - Reversión por vencimiento y aviso al consultorio: TEC-07/DENT-31.
 - Entrega de la notificación al paciente: HU-15/DENT-15.
 - Historial de propuestas y contrapropuesta del paciente: fuera de alcance.

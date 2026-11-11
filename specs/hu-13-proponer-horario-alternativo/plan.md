@@ -24,7 +24,7 @@
 - No editar migraciones ya aplicadas.
 - Migración manual: el snapshot EF está desincronizado.
 - No usar `dotnet ef database update` sin destino: falla por `PendingModelChangesWarning`. Usar destinos explícitos o `database-migrations.yml`.
-- Sin `TODO`; usar `NOTE (DENT-14)`, `NOTE (DENT-15)` y `NOTE (DENT-31)`.
+- Sin `TODO`; usar `NOTE (DENT-15)` y `NOTE (DENT-31)`.
 - Build Release con 0 errores y 0 advertencias.
 
 ## Review Focus
@@ -604,7 +604,7 @@ git commit -m "Sprint 7: cerrar evidencia de propuesta de horario (HU-13 · DENT
 
 Plan completo. La implementación debe hacerse en una rama de la HU y con TDD. Las dependencias externas quedan así:
 
-- Aceptar/rechazar propuesta: HU-14/DENT-14.
+- Aceptar/rechazar propuesta: cubierto por HU-14/DENT-14.
 - Vencimiento/reversión: TEC-07/DENT-31.
 - Entrega al paciente: HU-15/DENT-15.
 - UI del front: PR separado en `DentalConnect-front` con DENT-13.

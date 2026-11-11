@@ -287,7 +287,6 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
             appointment.ProposedStartsAt = start;
             appointment.ProposedEndsAt = end;
             appointment.ProposalExpiresAt = AppointmentProposalRules.ExpiresAt(now, start);
-            // NOTE (DENT-14): la aceptación/rechazo de la propuesta es de HU-14.
             // NOTE (DENT-15) / NOTE (DENT-31): la entrega al paciente y el vencimiento son de HU-15/TEC-07.
             var notice = await db.ClinicNotificationEvents.SingleOrDefaultAsync(e => e.AppointmentId == appointment.Id && e.EventType == AlternativeProposedEvent, ct);
             if (notice is null)

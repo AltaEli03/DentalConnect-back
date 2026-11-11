@@ -28,8 +28,8 @@
   Verificación: 2/2 pruebas de contrato; suite API 45/45; suite completa 83/83; build Release 0/0. `GetProposal_ReturnsBothSchedules`, `GetProposal_AfterReject_ReturnsRejected`, `GetProposal_WithoutToken_Returns401`, `GetProposal_OtherPatient_Returns404`, `GetProposal_ClinicAdminToken_Returns404`.
   Ruling: sin RED posible; la ruta se adelantó a T3 para cerrar la autorización de T2. Las pruebas fijan camelCase y que el `GET` no mute estado.
 
-- [ ] **T6. Cierre.** Build Release 0/0; suite real con `TEST_DATABASE_URL`; sin cambio de esquema; retirar `NOTE (DENT-14)` del código y de las cinco referencias de HU-13; transicionar `DENT-14` y enlazar el PR por Atlassian MCP; `security-reviewer` PASS y `traceability-clerk` OK; evidencia con conteos reales.
-  Verificación: `dotnet build DentalConnect.slnx -c Release` y `TEST_DATABASE_URL=... dotnet test DentalConnect.slnx -c Release`; `grep -rn "NOTE (DENT-14)" DentalConnect DentalConnect.Domain DentalConnect.Infrastructure DentalConnect.Tests` vacío; `grep -rn "NOTE (DENT-14)" specs/hu-13-proponer-horario-alternativo` vacío; `git diff --stat main -- DentalConnect.Infrastructure/Persistence/Migrations docs/base-datos/migraciones.md` vacío.
+- [x] **T6. Cierre.** Build Release 0/0; suite real con `TEST_DATABASE_URL`; sin cambio de esquema; retirar `NOTE (DENT-14)` del código y de las cinco referencias de HU-13; transicionar `DENT-14` a `Pruebas`; `security-reviewer` PASS y `traceability-clerk` contenido OK; evidencia con conteos reales.
+  Verificación: `dotnet build DentalConnect.slnx -c Release` → 0/0; `TEST_DATABASE_URL=... dotnet test DentalConnect.slnx -c Release` → 84/84 (38 no-Postgres + 46 API); `grep -rn "NOTE (DENT-14)" DentalConnect DentalConnect.Domain DentalConnect.Infrastructure DentalConnect.Tests` vacío; `grep -rn "NOTE (DENT-14)" specs/hu-13-proponer-horario-alternativo` vacío; `git diff --stat main -- DentalConnect.Infrastructure/Persistence/Migrations docs/base-datos/migraciones.md` vacío; Jira `DENT-14` en `Pruebas` (transición 41) con PR pendiente.
 
 ## Pendientes con dueño
 
@@ -46,4 +46,4 @@
 
 | Fecha | Build | Tests | Migraciones | Commit | Notas |
 |---|---|---|---|---|---|
-| 11-Nov-2026 | Pendiente | Pendiente | Sin cambio de esquema | Pendiente | Specs en borrador; implementación no iniciada. |
+| 11-Nov-2026 | 0 errores / 0 advertencias | 84/84 (38 no-Postgres + 46 API) | Sin cambio de esquema | `aab9fda` specs, `e8260ca` T1, `108be29` T2–T3, `4862bc7` T4, `6497a3c` T5; cierre en HEAD | PostgreSQL 16 local; `security-reviewer` PASS; `traceability-clerk` contenido OK; Jira en `Pruebas`; PR pendiente. |

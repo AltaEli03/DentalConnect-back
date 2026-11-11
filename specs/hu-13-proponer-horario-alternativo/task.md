@@ -35,7 +35,6 @@
 
 | Pendiente | Dueño | Capa | Marca |
 |---|---|---|---|
-| Aceptar/rechazar propuesta y transición a `CONFIRMED`/`REJECTED` | HU-14 / DENT-14 | HU-14 | `NOTE (DENT-14)` |
 | Reversión a `PENDING` al vencer y aviso al consultorio | TEC-07 / DENT-31 | TEC-07 | `NOTE (DENT-31)` |
 | Entrega de la notificación al paciente | HU-15 / DENT-15 | HU-15 | `NOTE (DENT-15)` |
 | UI de proponer horario y contrato camelCase | DENT-13 (DentalConnect-front) | Front | `DENT-13` |

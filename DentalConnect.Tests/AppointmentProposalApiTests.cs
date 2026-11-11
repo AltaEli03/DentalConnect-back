@@ -483,6 +483,23 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
     }
 
     [PostgresFact]
+    public async Task RejectProposal_ClinicAdminToken_Returns404()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+
+            using var response = await PostRejectAsync(clinic, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
     public async Task RejectProposal_WithoutToken_Returns401()
     {
         if (!_fixture.Available) return;
