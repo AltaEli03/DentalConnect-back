@@ -2,7 +2,7 @@
 
 | HU | Jira | Sprint | Módulo | Contraparte | Estado |
 |---|---|---|---|---|---|
-| HU-14 Aceptar o rechazar un horario alternativo | [DENT-14](https://uttt-proyecto.atlassian.net/browse/DENT-14) | DentalConnect Sprint 07 | `DentalConnect/AppointmentEndpoints.cs` (citas) | `DentalConnect-front` HU-14 (misma clave DENT-14; pendiente) | 🚧 Borrador |
+| HU-14 Aceptar o rechazar un horario alternativo | [DENT-14](https://uttt-proyecto.atlassian.net/browse/DENT-14) | DentalConnect Sprint 07 | `DentalConnect/AppointmentEndpoints.cs` (citas) | `DentalConnect-front` HU-14 (misma clave DENT-14; pendiente) | 🚧 Borrador con evidencia |
 
 ## Contexto
 
