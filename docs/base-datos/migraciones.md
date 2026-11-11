@@ -27,6 +27,18 @@ FROM "__EFMigrationsHistory"
 ORDER BY 1;
 ```
 
+## Historial de migraciones
+
+| Migración | Fecha | Estado |
+|---|---|---|
+| `20261015060846_InitialCreate` | 15-Oct-2026 | Aplicada |
+| `20261020120000_Sprint3DentistScheduling` | 20-Oct-2026 | Aplicada |
+| `20261109000000_Sprint5Appointments` | 09-Nov-2026 | Aplicada |
+| `20261109010000_Sprint5DemoDentistServices` | 09-Nov-2026 | Aplicada |
+| `20261109020000_Sprint5DemoDentistSchedule` | 09-Nov-2026 | Aplicada |
+| `20261109030000_Sprint6ClinicAppointmentReview` | 09-Nov-2026 | Aplicada |
+| `20261110120000_Sprint7AppointmentProposal` | 10-Nov-2026 | Pendiente de aplicar |
+
 ## Reversión controlada
 
 ```bash
@@ -47,8 +59,8 @@ dotnet ef database update 0 \
 
 ## Evidencia automatizada
 
-El workflow `.github/workflows/db-migrations.yml` levanta PostgreSQL 16 efímero
-y ejecuta el ciclo completo:
+El workflow `.github/workflows/database-migrations.yml` levanta PostgreSQL 16 efímero
+y ejecuta el ciclo completo con destinos explícitos:
 
 1. Aplicar todas las migraciones.
 2. Mostrar `__EFMigrationsHistory`.
@@ -63,7 +75,7 @@ y ejecuta el ciclo completo:
 | Fecha | PENDIENTE |
 | Commit | PENDIENTE |
 | Run de GitHub Actions | PENDIENTE |
-| Migración aplicada | `20261015060846_InitialCreate` |
+| Migración aplicada | `20261110120000_Sprint7AppointmentProposal` |
 | Resultado de la reversión | PENDIENTE |
 | Resultado de la reaplicación | PENDIENTE |
 
