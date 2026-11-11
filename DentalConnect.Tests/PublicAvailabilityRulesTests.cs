@@ -45,6 +45,17 @@ public class PublicAvailabilityRulesTests
         Assert.Contains(slots, slot => slot.StartsAt.Hour == 10 && slot.StartsAt.Minute == 0);
     }
 
+    // DENT-13 R8: una propuesta no reserva el intervalo.
+    [Fact]
+    public void ProposedStatusDoesNotBlockAvailability()
+    {
+        var schedule = new DentistWeeklySchedule { DayOfWeek = DayOfWeek.Monday, StartsAt = new TimeOnly(9, 0), EndsAt = new TimeOnly(10, 0) };
+        var proposed = new Appointment { StartsAt = new DateTimeOffset(2026, 10, 26, 9, 0, 0, TimeSpan.Zero), EndsAt = new DateTimeOffset(2026, 10, 26, 9, 30, 0, TimeSpan.Zero), Status = "PROPOSED" };
+        var slots = PublicAvailabilityRules.Generate(Monday, 1, 30, [schedule], [], Utc, BeforeSlots, [proposed]);
+        Assert.Contains(slots, slot => slot.StartsAt.Hour == 9 && slot.StartsAt.Minute == 0);
+        Assert.Contains(slots, slot => slot.StartsAt.Hour == 9 && slot.StartsAt.Minute == 30);
+    }
+
     [Fact]
     public void RejectsInvalidHorizonAndDuration()
     {
