@@ -355,6 +355,34 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
             {
                 var proposedStart = appointment.ProposedStartsAt.Value.ToUniversalTime();
                 var proposedEnd = appointment.ProposedEndsAt.Value.ToUniversalTime();
+
+                var dentist = await db.Dentists.Include(d => d.WeeklySchedules).Include(d => d.ScheduleBlocks)
+                    .Include(d => d.DentistServices).ThenInclude(ds => ds.DentalService)
+                    .SingleOrDefaultAsync(d => d.Id == appointment.DentistId && d.ClinicId == appointment.ClinicId && d.IsActive, ct);
+                if (dentist is null) return Conflict("DENTIST_UNAVAILABLE", "El dentista ya no está disponible");
+
+                var service = await db.DentalServices.AsNoTracking().SingleOrDefaultAsync(s => s.Id == appointment.DentalServiceId && s.IsActive, ct);
+                var clinicOffers = await db.ClinicServices.AsNoTracking().AnyAsync(cs => cs.ClinicId == appointment.ClinicId && cs.DentalServiceId == appointment.DentalServiceId && cs.IsActive && cs.DentalService.IsActive, ct);
+                var dentistOffers = dentist.DentistServices.Any(ds => ds.DentalServiceId == appointment.DentalServiceId && ds.DentalService.IsActive);
+                var durationMinutes = (int)(proposedEnd - proposedStart).TotalMinutes;
+                if (service is null || service.EstimatedDurationMinutes <= 0 || !clinicOffers || !dentistOffers ||
+                    durationMinutes != service.EstimatedDurationMinutes)
+                    return Conflict("SERVICE_CHANGED", "El servicio ya no está disponible o cambió; solicita un horario actualizado");
+
+                var patientConflict = await db.Appointments.AsNoTracking()
+                    .AnyAsync(a => a.Id != appointment.Id && a.PatientSubject == appointment.PatientSubject &&
+                        a.Status == "CONFIRMED" && a.StartsAt < proposedEnd && a.EndsAt > proposedStart, ct);
+                if (patientConflict) return Conflict("PATIENT_CONFLICT", "El paciente ya tiene una cita confirmada en ese intervalo");
+
+                var zone = TimeZoneInfo.FindSystemTimeZoneById(PublicAvailabilityRules.PilotTimeZoneId);
+                var day = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(proposedStart, zone).DateTime);
+                var confirmed = await db.Appointments.AsNoTracking()
+                    .Where(a => a.DentistId == dentist.Id && a.Status == "CONFIRMED" && a.StartsAt < proposedEnd && a.EndsAt > proposedStart)
+                    .ToListAsync(ct);
+                var slots = PublicAvailabilityRules.Generate(day, 1, service.EstimatedDurationMinutes, dentist.WeeklySchedules, dentist.ScheduleBlocks, zone, now, confirmed);
+                if (!slots.Any(s => s.StartsAt == proposedStart && s.EndsAt == proposedEnd))
+                    return Conflict("SLOT_UNAVAILABLE", "El horario propuesto ya no está disponible");
+
                 appointment.StartsAt = proposedStart;
                 appointment.EndsAt = proposedEnd;
                 appointment.Status = "CONFIRMED";

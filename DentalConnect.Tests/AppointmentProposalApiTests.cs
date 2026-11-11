@@ -705,6 +705,288 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
+    // DENT-14 R3/R7/R8: revalidación al aceptar, conflictos y concurrencia.
+    [PostgresFact]
+    public async Task AcceptProposal_Occupied_Returns409AndKeepsProposed()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+
+            await UpdateAsync(db =>
+            {
+                db.Appointments.Add(NewAppointment(ids.ClinicId, ids.DentistId, ids.ServiceId, ids.ProposedStartsAt, 30, "CONFIRMED", "occupied-patient"));
+            });
+
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+            using var response = await PostAcceptAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("SLOT_UNAVAILABLE", await ErrorCodeAsync(response));
+
+            var appointment = await GetAppointmentAsync(ids.AppointmentId);
+            Assert.Equal("PROPOSED", appointment.Status);
+            Assert.Equal(ids.ProposedStartsAt, appointment.ProposedStartsAt);
+
+            var events = await GetEventsAsync(ids.AppointmentId);
+            Assert.DoesNotContain(events, e => e.EventType == AcceptedEvent);
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
+    public async Task AcceptProposal_BlockOverlap_Returns409()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+
+            await UpdateAsync(db =>
+            {
+                db.DentistScheduleBlocks.Add(new DentistScheduleBlock
+                {
+                    DentistId = ids.DentistId,
+                    StartsAt = ids.ProposedStartsAt,
+                    EndsAt = ids.ProposedStartsAt.AddMinutes(30),
+                    Reason = "Test block"
+                });
+            });
+
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+            using var response = await PostAcceptAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("SLOT_UNAVAILABLE", await ErrorCodeAsync(response));
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
+    public async Task AcceptProposal_BreakOverlap_Returns409()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+
+            await UpdateAsync(db =>
+            {
+                var schedule = db.DentistWeeklySchedules.Single(s => s.DentistId == ids.DentistId);
+                schedule.BreakStartsAt = new TimeOnly(9, 30);
+                schedule.BreakEndsAt = new TimeOnly(10, 30);
+            });
+
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+            using var response = await PostAcceptAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("SLOT_UNAVAILABLE", await ErrorCodeAsync(response));
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
+    public async Task AcceptProposal_OutsideSchedule_Returns409()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+
+            await UpdateAsync(db =>
+            {
+                var schedule = db.DentistWeeklySchedules.Single(s => s.DentistId == ids.DentistId);
+                schedule.EndsAt = new TimeOnly(9, 30);
+            });
+
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+            using var response = await PostAcceptAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("SLOT_UNAVAILABLE", await ErrorCodeAsync(response));
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
+    public async Task AcceptProposal_DentistUnavailable_Returns409()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+
+            await UpdateAsync(db =>
+            {
+                var dentist = db.Dentists.Single(d => d.Id == ids.DentistId);
+                dentist.IsActive = false;
+            });
+
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+            using var response = await PostAcceptAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("DENTIST_UNAVAILABLE", await ErrorCodeAsync(response));
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
+    public async Task AcceptProposal_ServiceChanged_Returns409()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+
+            await UpdateAsync(db =>
+            {
+                var service = db.DentalServices.Single(s => s.Id == ids.ServiceId);
+                service.EstimatedDurationMinutes = 45;
+            });
+
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+            using var response = await PostAcceptAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("SERVICE_CHANGED", await ErrorCodeAsync(response));
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
+    public async Task AcceptProposal_PatientConflict_Returns409()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+
+            await UpdateAsync(db =>
+            {
+                var otherDentist = new Dentist
+                {
+                    ClinicId = ids.ClinicId,
+                    FirstName = "Other",
+                    LastName = "Dentist",
+                    ProfessionalLicense = Unique("CED"),
+                    Specialty = "General",
+                    Biography = "Test"
+                };
+                db.Dentists.Add(otherDentist);
+                db.Appointments.Add(NewAppointment(ids.ClinicId, otherDentist.Id, ids.ServiceId, ids.ProposedStartsAt, 30, "CONFIRMED", ids.PatientSubject));
+            });
+
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+            using var response = await PostAcceptAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("PATIENT_CONFLICT", await ErrorCodeAsync(response));
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
+    public async Task AcceptProposal_Concurrent_OnlyOneConfirmed()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+
+            using var first = NewClient(null, subject: ids.PatientSubject);
+            using var second = NewClient(null, subject: ids.PatientSubject);
+            var responses = await Task.WhenAll(
+                PostAcceptAsync(first, ids.AppointmentId),
+                PostAcceptAsync(second, ids.AppointmentId));
+            try
+            {
+                var bodies = await Task.WhenAll(responses.Select(r => r.Content.ReadAsStringAsync()));
+                var diagnostic = string.Join(" | ", responses.Select((r, i) => $"{(int)r.StatusCode} {r.StatusCode}: {bodies[i]}"));
+                Assert.True(responses.Count(r => r.StatusCode == HttpStatusCode.OK) == 1, diagnostic);
+                Assert.True(responses.Count(r => r.StatusCode == HttpStatusCode.Conflict) == 1, diagnostic);
+
+                var conflictIndex = Array.FindIndex(responses, r => r.StatusCode == HttpStatusCode.Conflict);
+                using var conflictDoc = JsonDocument.Parse(bodies[conflictIndex]);
+                var conflictCode = conflictDoc.RootElement.GetProperty("error").GetProperty("code").GetString();
+                Assert.True(conflictCode is "APPOINTMENT_CONFLICT" or "PROPOSAL_NOT_ACTIVE", diagnostic);
+            }
+            finally
+            {
+                foreach (var response in responses) response.Dispose();
+            }
+
+            var appointment = await GetAppointmentAsync(ids.AppointmentId);
+            Assert.Equal("CONFIRMED", appointment.Status);
+            var events = await GetEventsAsync(ids.AppointmentId);
+            Assert.Single(events, e => e.EventType == AcceptedEvent);
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
+    public async Task ExpireProposal_SecondCycle_ReusesExpiredEvent()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+
+            using var firstProposal = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, firstProposal.StatusCode);
+            await UpdateAsync(db =>
+            {
+                var item = db.Appointments.Single(a => a.Id == ids.AppointmentId);
+                item.ProposalExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+            });
+            using var firstExpiry = await PostAcceptAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.Conflict, firstExpiry.StatusCode);
+            Assert.Equal("PROPOSAL_EXPIRED", await ErrorCodeAsync(firstExpiry));
+
+            var firstEvents = await GetEventsAsync(ids.AppointmentId);
+            var firstExpired = Assert.Single(firstEvents, e => e.EventType == ExpiredEvent);
+            var eventId = firstExpired.Id;
+
+            using var secondProposal = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
+            Assert.Equal(HttpStatusCode.OK, secondProposal.StatusCode);
+            await UpdateAsync(db =>
+            {
+                var item = db.Appointments.Single(a => a.Id == ids.AppointmentId);
+                item.ProposalExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+            });
+            using var secondExpiry = await PostAcceptAsync(patient, ids.AppointmentId);
+            Assert.Equal(HttpStatusCode.Conflict, secondExpiry.StatusCode);
+            Assert.Equal("PROPOSAL_EXPIRED", await ErrorCodeAsync(secondExpiry));
+
+            var secondEvents = await GetEventsAsync(ids.AppointmentId);
+            var reused = Assert.Single(secondEvents, e => e.EventType == ExpiredEvent);
+            Assert.Equal(eventId, reused.Id);
+            Assert.Null(reused.ProcessedAt);
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
     private HttpClient NewClient(string? role = "CLINIC_ADMIN", string? clinicId = null, string subject = "test-user")
     {
         var client = _fixture.Factory!.CreateClient();
