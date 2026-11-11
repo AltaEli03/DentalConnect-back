@@ -37,7 +37,7 @@ ORDER BY 1;
 | `20261109010000_Sprint5DemoDentistServices` | 09-Nov-2026 | Aplicada |
 | `20261109020000_Sprint5DemoDentistSchedule` | 09-Nov-2026 | Aplicada |
 | `20261109030000_Sprint6ClinicAppointmentReview` | 09-Nov-2026 | Aplicada |
-| `20261110120000_Sprint7AppointmentProposal` | 10-Nov-2026 | Pendiente de aplicar |
+| `20261110120000_Sprint7AppointmentProposal` | 10-Nov-2026 | Aplicada (local) |
 
 ## Reversión controlada
 
@@ -60,39 +60,55 @@ dotnet ef database update 0 \
 ## Evidencia automatizada
 
 El workflow `.github/workflows/database-migrations.yml` levanta PostgreSQL 16 efímero
-y ejecuta el ciclo completo con destinos explícitos:
+y ejecuta el ciclo con destinos explícitos:
 
-1. Aplicar todas las migraciones.
-2. Mostrar `__EFMigrationsHistory`.
-3. Revertir a `0`.
-4. Verificar que no quedan tablas (`\dt`).
-5. Reaplicar todas las migraciones.
+1. Listar migraciones y obtener `LATEST` y `PREVIOUS`.
+2. Aplicar `LATEST` y verificar que no queda pendiente.
+3. Revertir a `PREVIOUS` y verificar que `LATEST` queda pendiente.
+4. Reaplicar `LATEST` y verificar que no queda ninguna pendiente.
+5. Publicar el resultado en el resumen del job.
 
 ## Evidencia a conservar
 
 | Campo | Valor |
 |---|---|
-| Fecha | PENDIENTE |
-| Commit | PENDIENTE |
-| Run de GitHub Actions | PENDIENTE |
+| Fecha | 10-Nov-2026 |
+| Commit | `1e498dc` |
+| Run de GitHub Actions | PENDIENTE (sin push/PR) |
 | Migración aplicada | `20261110120000_Sprint7AppointmentProposal` |
-| Resultado de la reversión | PENDIENTE |
-| Resultado de la reaplicación | PENDIENTE |
+| Resultado de la reversión | OK local (PostgreSQL 16) |
+| Resultado de la reaplicación | OK local (PostgreSQL 16) |
 
-### Salida de aplicación (pegar salida real)
+### Salida de aplicación (local)
 
 ```text
-PENDIENTE
+No migrations were applied. The database is already up to date.
+Done.
 ```
 
-### Historial aplicado (pegar salida real)
+### Historial aplicado (local)
 
 ```text
-PENDIENTE
+20261015060846_InitialCreate
+20261020120000_Sprint3DentistScheduling
+20261109000000_Sprint5Appointments
+20261109010000_Sprint5DemoDentistServices
+20261109020000_Sprint5DemoDentistSchedule
+20261109030000_Sprint6ClinicAppointmentReview
+20261110120000_Sprint7AppointmentProposal
+(7 rows)
 ```
 
-### Salida de reversión (pegar salida real)
+### Salida de reversión (local)
 
 ```text
-PENDIENTE
+Reverting migration '20261110120000_Sprint7AppointmentProposal'.
+Done.
+```
+
+### Salida de reaplicación (local)
+
+```text
+Applying migration '20261110120000_Sprint7AppointmentProposal'.
+Done.
 ```

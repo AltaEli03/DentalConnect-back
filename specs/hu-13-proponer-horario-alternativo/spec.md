@@ -2,7 +2,7 @@
 
 | HU | Jira | Sprint | Módulo | Contraparte | Estado |
 |---|---|---|---|---|---|
-| HU-13 Proponer un horario alternativo | [DENT-13](https://uttt-proyecto.atlassian.net/browse/DENT-13) | DentalConnect Sprint 07 | `DentalConnect/AppointmentEndpoints.cs` (citas) | `DentalConnect-front` HU-13 (misma clave DENT-13; pendiente) | 🚧 Borrador |
+| HU-13 Proponer un horario alternativo | [DENT-13](https://uttt-proyecto.atlassian.net/browse/DENT-13) | DentalConnect Sprint 07 | `DentalConnect/AppointmentEndpoints.cs` (citas) | `DentalConnect-front` HU-13 (misma clave DENT-13; pendiente) | 🚧 Borrador con evidencia |
 
 ## Contexto
 
@@ -16,8 +16,8 @@
 - **R2 (AC2).** La alternativa se valida contra dentista activo, servicio activo y ofrecido, duración vigente, jornada, descanso, bloqueos y citas `CONFIRMED`. Si el intervalo está ocupado o fuera de jornada, responde `409 SLOT_UNAVAILABLE` y no guarda nada.
 - **R3 (AC3).** Si ya existe una propuesta activa (`Status = PROPOSED`), otra llamada responde `409 PROPOSAL_ALREADY_ACTIVE` y no crea una segunda.
 - **R4 (AC4).** Si `proposedStartsAt <= now` (UTC), responde `409 PAST_DATE` y no guarda nada.
-- **R5.** `ProposalExpiresAt = min(now + 24 h, ProposedStartsAt)`. La reversión a `PENDING` y el aviso al consultorio al vencer son de HU-14/TEC-07. `NOTE (DENT-14)` / `NOTE (DENT-31)`.
-- **R6.** En la misma transacción se registra el evento outbox `APPOINTMENT_ALTERNATIVE_PROPOSED` para la cita. Si ya existe, se reutiliza y se marca no procesado. La entrega al paciente y el worker son de HU-15/TEC-07. `NOTE (DENT-15)`.
+- **R5.** `ProposalExpiresAt = min(now + 24 h, ProposedStartsAt)`. La aceptación/rechazo de la propuesta es de HU-14/DENT-14 (`NOTE (DENT-14)`). La reversión a `PENDING` y el aviso al consultorio al vencer son de TEC-07/DENT-31 (`NOTE (DENT-31)`).
+- **R6.** En la misma transacción se registra el evento outbox `APPOINTMENT_ALTERNATIVE_PROPOSED` para la cita. Si ya existe, se reutiliza y se marca no procesado. La entrega al paciente y el worker son de HU-15/DENT-15 (`NOTE (DENT-15)`).
 - **R7.** Solo el `CLINIC_ADMIN` del consultorio dueño puede proponer. Sin token: `401`. Sin rol o claim de consultorio: `403`. Cita inexistente o de otro consultorio: `404` sin datos.
 - **R8.** La propuesta **no reserva** el intervalo: disponibilidad pública y creación de citas siguen bloqueando solo `CONFIRMED`. La aceptación de HU-14 revalida.
 - **R9.** La alternativa debe ser distinta del inicio original; si coincide, `409 PROPOSAL_SAME_AS_ORIGINAL`.
@@ -179,6 +179,18 @@ Errores:
 - UI del front: PR separado en `DentalConnect-front` con la misma clave DENT-13.
 - README general de citas: fuera de alcance de esta HU.
 
+## Evidencia
+
+| Campo | Valor |
+|---|---|
+| Fecha | 10-Nov-2026 |
+| Build | `dotnet build DentalConnect.slnx -c Release` → 0 errores / 0 advertencias |
+| Tests | `TEST_DATABASE_URL=... dotnet test DentalConnect.slnx -c Release` → 57/57 (39 reglas + 18 API con PostgreSQL) |
+| Migraciones | apply → revert → reapply OK en PostgreSQL 16 local |
+| Commits | specs `13b53b3`; dominio `b2cd9b6`; migración `1e498dc`; implementación `0c449bd` |
+| Suite API | corre con `TEST_DATABASE_URL` en `sprint5-tests.yml`; `deploy-aws.yml` la omite |
+| CI de migraciones | PENDIENTE (sin push/PR) |
+
 ## Aprobación
 
-🚧 Borrador. Pendiente de revisión del equipo.
+🚧 Borrador con evidencia. Pendiente de revisor indicado por el usuario.
