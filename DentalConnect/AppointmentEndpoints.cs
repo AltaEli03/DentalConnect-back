@@ -149,7 +149,9 @@ public static class AppointmentEndpoints
         {
             id = x.a.Id, folio = x.a.Folio, status = x.a.Status, startsAt = x.a.StartsAt, endsAt = x.a.EndsAt,
             proposedStartsAt = x.a.ProposedStartsAt, proposedEndsAt = x.a.ProposedEndsAt, proposalExpiresAt = x.a.ProposalExpiresAt,
-            receivedAt = x.a.CreatedAt, clinicId = x.a.ClinicId, dentist = new { id = x.d.Id, firstName = x.d.FirstName, lastName = x.d.LastName },
+            receivedAt = x.a.CreatedAt, clinicId = x.a.ClinicId,
+            patient = new { firstName = x.a.PatientFirstName, lastName = x.a.PatientLastName, email = x.a.PatientEmail, phone = x.a.PatientPhone },
+            dentist = new { id = x.d.Id, firstName = x.d.FirstName, lastName = x.d.LastName },
             service = new { id = x.s.Id, name = x.s.Name, estimatedDurationMinutes = x.s.EstimatedDurationMinutes }
         }).ToListAsync(ct);
         return Results.Json(new { data });

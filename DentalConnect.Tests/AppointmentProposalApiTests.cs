@@ -1070,6 +1070,25 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
     }
 
     [PostgresFact]
+    public async Task ClinicList_IncludesPatientContact()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var response = await clinic.GetAsync("/api/appointments");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var data = (await ReadJsonAsync(response)).RootElement.GetProperty("data");
+            var item = data.EnumerateArray().Single(x => x.GetProperty("id").GetString() == ids.AppointmentId);
+            Assert.True(item.TryGetProperty("patient", out var patient));
+            Assert.Equal(JsonValueKind.Object, patient.ValueKind);
+            Assert.True(patient.TryGetProperty("phone", out _));
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
     public async Task Mine_WithoutToken_Returns401()
     {
         if (!_fixture.Available) return;
