@@ -145,7 +145,7 @@ public static class AppointmentEndpoints
         if (status is not null) query = query.Where(x => x.a.Status == status);
         if (fromDate.HasValue) query = query.Where(x => x.a.StartsAt >= StartOfDay(fromDate.Value, zone));
         if (toDate.HasValue) query = query.Where(x => x.a.StartsAt < StartOfDay(toDate.Value.AddDays(1), zone));
-        var data = await query.OrderBy(x => x.a.CreatedAt).ThenBy(x => x.a.Id).Take(500).Select(x => new
+        var data = await query.OrderByDescending(x => x.a.CreatedAt).ThenByDescending(x => x.a.Id).Take(500).Select(x => new
         {
             id = x.a.Id, folio = x.a.Folio, status = x.a.Status, startsAt = x.a.StartsAt, endsAt = x.a.EndsAt,
             proposedStartsAt = x.a.ProposedStartsAt, proposedEndsAt = x.a.ProposedEndsAt, proposalExpiresAt = x.a.ProposalExpiresAt,
