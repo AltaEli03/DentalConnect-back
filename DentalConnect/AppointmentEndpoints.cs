@@ -27,6 +27,7 @@ public static class AppointmentEndpoints
     {
         endpoints.MapPost("/api/appointments", CreateAsync).RequireAuthorization();
         endpoints.MapGet("/api/appointments", ListForClinicAsync).RequireAuthorization();
+        endpoints.MapGet("/api/appointments/mine", ListForPatientAsync).RequireAuthorization();
         endpoints.MapGet("/api/appointments/{appointmentId}", DetailForClinicAsync).RequireAuthorization();
         endpoints.MapPost("/api/appointments/{appointmentId}/confirm", ConfirmAsync).RequireAuthorization();
         endpoints.MapPost("/api/appointments/{appointmentId}/reject", RejectAsync).RequireAuthorization();
@@ -144,13 +145,44 @@ public static class AppointmentEndpoints
         if (status is not null) query = query.Where(x => x.a.Status == status);
         if (fromDate.HasValue) query = query.Where(x => x.a.StartsAt >= StartOfDay(fromDate.Value, zone));
         if (toDate.HasValue) query = query.Where(x => x.a.StartsAt < StartOfDay(toDate.Value.AddDays(1), zone));
-        var data = await query.OrderBy(x => x.a.CreatedAt).ThenBy(x => x.a.Id).Select(x => new
+        var data = await query.OrderByDescending(x => x.a.CreatedAt).ThenByDescending(x => x.a.Id).Take(500).Select(x => new
         {
             id = x.a.Id, folio = x.a.Folio, status = x.a.Status, startsAt = x.a.StartsAt, endsAt = x.a.EndsAt,
             proposedStartsAt = x.a.ProposedStartsAt, proposedEndsAt = x.a.ProposedEndsAt, proposalExpiresAt = x.a.ProposalExpiresAt,
-            receivedAt = x.a.CreatedAt, clinicId = x.a.ClinicId, dentist = new { id = x.d.Id, firstName = x.d.FirstName, lastName = x.d.LastName },
+            receivedAt = x.a.CreatedAt, clinicId = x.a.ClinicId,
+            patient = new { firstName = x.a.PatientFirstName, lastName = x.a.PatientLastName, email = x.a.PatientEmail, phone = x.a.PatientPhone },
+            dentist = new { id = x.d.Id, firstName = x.d.FirstName, lastName = x.d.LastName },
             service = new { id = x.s.Id, name = x.s.Name, estimatedDurationMinutes = x.s.EstimatedDurationMinutes }
         }).ToListAsync(ct);
+        return Results.Json(new { data });
+    }
+
+    private static async Task<IResult> ListForPatientAsync(HttpContext http, DentalConnectDbContext db, CancellationToken ct)
+    {
+        if (!TryGetPatientSubject(http, out var patient)) return Results.Unauthorized();
+        var data = await (from a in db.Appointments.AsNoTracking()
+                          join c in db.Clinics.AsNoTracking() on a.ClinicId equals c.Id
+                          join d in db.Dentists.AsNoTracking() on a.DentistId equals d.Id
+                          join s in db.DentalServices.AsNoTracking() on a.DentalServiceId equals s.Id
+                          where a.PatientSubject == patient
+                          orderby a.StartsAt descending, a.Id descending
+                          select new
+                          {
+                              id = a.Id,
+                              folio = a.Folio,
+                              status = a.Status,
+                              startsAt = a.StartsAt,
+                              endsAt = a.EndsAt,
+                              proposedStartsAt = a.ProposedStartsAt,
+                              proposedEndsAt = a.ProposedEndsAt,
+                              proposalExpiresAt = a.ProposalExpiresAt,
+                              createdAt = a.CreatedAt,
+                              timeZoneId = a.TimeZoneId,
+                              rejectionReason = a.RejectionReason,
+                              clinic = new { id = c.Id, name = c.Name, municipality = c.Municipality, state = c.State, phone = c.Phone },
+                              dentist = new { id = d.Id, firstName = d.FirstName, lastName = d.LastName },
+                              service = new { id = s.Id, name = s.Name, estimatedDurationMinutes = s.EstimatedDurationMinutes }
+                          }).Take(200).ToListAsync(ct);
         return Results.Json(new { data });
     }
 
