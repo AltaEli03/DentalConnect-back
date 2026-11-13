@@ -145,7 +145,7 @@ public static class AppointmentEndpoints
         if (status is not null) query = query.Where(x => x.a.Status == status);
         if (fromDate.HasValue) query = query.Where(x => x.a.StartsAt >= StartOfDay(fromDate.Value, zone));
         if (toDate.HasValue) query = query.Where(x => x.a.StartsAt < StartOfDay(toDate.Value.AddDays(1), zone));
-        var data = await query.OrderBy(x => x.a.CreatedAt).ThenBy(x => x.a.Id).Select(x => new
+        var data = await query.OrderBy(x => x.a.CreatedAt).ThenBy(x => x.a.Id).Take(500).Select(x => new
         {
             id = x.a.Id, folio = x.a.Folio, status = x.a.Status, startsAt = x.a.StartsAt, endsAt = x.a.EndsAt,
             proposedStartsAt = x.a.ProposedStartsAt, proposedEndsAt = x.a.ProposedEndsAt, proposalExpiresAt = x.a.ProposalExpiresAt,
@@ -182,7 +182,7 @@ public static class AppointmentEndpoints
                               clinic = new { id = c.Id, name = c.Name, municipality = c.Municipality, state = c.State, phone = c.Phone },
                               dentist = new { id = d.Id, firstName = d.FirstName, lastName = d.LastName },
                               service = new { id = s.Id, name = s.Name, estimatedDurationMinutes = s.EstimatedDurationMinutes }
-                          }).ToListAsync(ct);
+                          }).Take(200).ToListAsync(ct);
         return Results.Json(new { data });
     }
 
