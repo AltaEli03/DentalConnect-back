@@ -1,0 +1,7 @@
+aws_region              = "us-east-1"
+project_name            = "dentalconnect"
+frontend_origin         = "https://your-frontend.example"
+cognito_user_pool_id    = "us-east-1_EXAMPLE"
+cognito_client_id       = "example-client-id"
+github_repository       = "AltaEli03/DentalConnect-back"
+db_instance_class       = "db.t3.micro"
