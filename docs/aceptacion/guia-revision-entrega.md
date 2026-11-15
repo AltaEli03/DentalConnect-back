@@ -30,8 +30,12 @@ Comprobaciones GET/OPTIONS desde la sesión de trabajo, sin credenciales ni dato
 | `GET /api/clinics` | HTTP 200; seis clínicas de catálogo |
 | `GET /api/clinics/{id}` para una clínica del catálogo | HTTP 200 |
 | `OPTIONS /api/clinics` con Origin de Amplify | HTTP 204; origen y métodos CORS permitidos |
+| `GET /api/clinics/{clinicId}/dentists/{dentistId}/availability?serviceId=…&date=2026-11-17` | HTTP 200; 14 espacios completos de 30 min, sin solapamientos, zona `America/Mexico_City` |
+| Consulta de disponibilidad para fecha pasada (`2020-01-01`) | HTTP 400; solicitud rechazada |
 
-Esto confirma el acceso público al despliegue actual y sus rutas anónimas. No confirma todavía el comportamiento autenticado de citas, el SHA del backend que está ejecutándose ni la restauración de respaldo. La comprobación de `/api/health` debe repetirse tras cada publicación de backend.
+La configuración de GitHub Actions también se revisó de forma no destructiva: el frontend tiene `AMPLIFY_APP_ID`, `AWS_ROLE_ARN` y `VITE_API_BASE_URL`; el backend tiene las variables requeridas de región, ECS, ECR, health, Cognito, origen del frontend y referencias a secretos. No hay valores listados como secretos de repositorio; el workflow usa OIDC y la contraseña de PostgreSQL se administra en AWS Secrets Manager según Terraform. No se leyeron valores de credenciales.
+
+Esto confirma el acceso público al despliegue actual y sus rutas anónimas/consulta de disponibilidad. No confirma todavía el comportamiento autenticado de citas, el SHA del backend que está ejecutándose ni la restauración de respaldo. La comprobación de `/api/health` debe repetirse tras cada publicación de backend.
 
 GitHub Actions registra el workflow de despliegue AWS exitoso en `main` para `8fab14e9683edfc94e4fb3b7fb267ae23230bc79`: [Backend CI and AWS deployment](https://github.com/AltaEli03/DentalConnect-back/actions/runs/43685117936). El backend de `develop` está en `4b9267b87262056796780d4018e2fe2239009189`; no se afirma que ese commit esté publicado. La promoción `develop` → `release` → `main` requiere completar aceptación y respaldos pendientes.
 
@@ -54,7 +58,7 @@ Completar en el sitio HTTPS actual y adjuntar capturas sin mostrar secretos ni d
 
 | Fecha/hora | URL y commit publicado | Casos aprobados | Defectos / responsable |
 | --- | --- | --- | --- |
-| Pendiente | Pendiente de validación del despliegue AWS | Pendiente | Pendiente |
+| 15-Nov-2026 | Frontend main Amplify; API CloudFront; API main `8fab14e` | Catálogo, filtro Tula, detalle, perfil, disponibilidad futura, rechazo de fecha pasada, CORS, manifest y SW | Sin defecto en estos casos anónimos; pendiente auth/respaldo |
 
 ## Incidencias conocidas y siguientes acciones
 
