@@ -18,6 +18,8 @@ Esta guía separa evidencia automatizada de comprobaciones que requieren AWS, el
 | Análisis estático backend | [CodeQL 43735597431](https://github.com/AltaEli03/DentalConnect-back/actions/runs/43735597431) | Ejecución exitosa; consultar Security / Code scanning para hallazgos |
 | Frontend lint, 91 pruebas, 23 pares de contraste y build PWA | PR [#25](https://github.com/AltaEli03/DentalConnect-front/pull/25) | CI aprobado e integrado a `develop` |
 
+La [captura móvil del catálogo a 390 × 844](https://github.com/AltaEli03/DentalConnect-front/blob/develop/specs/tec-09-pruebas-integrales-permisos-accesibilidad/screenshots/catalogo-movil-390.png) y el registro de accesibilidad están versionados en el frontend.
+
 ## Verificación pública HTTPS (15-Nov-2026)
 
 Comprobaciones GET/OPTIONS desde la sesión de trabajo, sin credenciales ni datos privados:
