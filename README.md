@@ -16,6 +16,7 @@ Es el backend del frontend [DentalConnect-front](https://github.com/AltaEli03/De
 - [Pruebas](#pruebas)
 - [Despliegue en AWS](#despliegue-en-aws)
 - [Integración con el frontend](#integración-con-el-frontend)
+- [Guía de revisión y aceptación](docs/aceptacion/guia-revision-entrega.md)
 
 ## Arquitectura
 

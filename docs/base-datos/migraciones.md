@@ -84,12 +84,14 @@ y ejecuta el ciclo con destinos explícitos:
 
 | Campo | Valor |
 |---|---|
-| Fecha | 10-Nov-2026 |
-| Commit | `1e498dc` |
-| Run de GitHub Actions | PENDIENTE (sin push/PR) |
+| Fecha | 15-Nov-2026 |
+| Commit integrado en develop | `4b9267b87262056796780d4018e2fe2239009189` |
+| Run de GitHub Actions | [Database migration lifecycle — success](https://github.com/AltaEli03/DentalConnect-back/actions/runs/43735597231) |
 | Migración aplicada | `20261110120000_Sprint7AppointmentProposal` |
-| Resultado de la reversión | OK local (PostgreSQL 16) |
-| Resultado de la reaplicación | OK local (PostgreSQL 16) |
+| Resultado de aplicación | Correcto en PostgreSQL 16 efímero de CI |
+| Resultado de reversión | Correcto en PostgreSQL 16 efímero de CI |
+| Resultado de reaplicación | Correcto en PostgreSQL 16 efímero de CI |
+| Producción | No se aplicó ni revirtió ninguna migración de RDS en esta ejecución |
 
 ### Salida de aplicación (local)
 

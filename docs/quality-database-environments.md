@@ -16,7 +16,7 @@ Los valores específicos no secretos de despliegue se configuran en GitHub Actio
 
 ## Calidad automatizada
 
-Se seleccionó GitHub CodeQL para análisis estático de seguridad C# porque se integra con GitHub Actions y publica resultados SARIF en Security / Code scanning. El workflow .github/workflows/codeql.yml ejecuta consultas security-extended al modificar main o Sprint-7-Emanuel, en PR hacia main y semanalmente. El build y xUnit se ejecutan en .github/workflows/sprint5-tests.yml, que además conserva cobertura Cobertura y resumen como artefacto por 90 días.
+Se seleccionó GitHub CodeQL para análisis estático de seguridad C# porque se integra con GitHub Actions y publica resultados SARIF en Security / Code scanning. El workflow `.github/workflows/codeql.yml` ejecuta consultas `security-extended` en pushes a `main`, `develop` y `release`, en cada pull request, semanalmente y por ejecución manual. El build y xUnit se ejecutan en `.github/workflows/sprint5-tests.yml`, que además conserva la cobertura Cobertura y el resumen como artefacto por 90 días.
 
 El análisis CodeQL debe revisarse en cada ejecución: documentar alertas nuevas, severidad, falsos positivos justificados y correcciones; no se declaran métricas hasta que GitHub termine el análisis. El primer escaneo de la rama constituye la línea base registrada en el run de Actions; los siguientes permiten comparar hallazgos. ESLint y Vitest se mantienen como controles del frontend en su repositorio.
 
@@ -38,3 +38,13 @@ DentalConnect.Tests es un proyecto independiente con xUnit. GitHub Actions ejecu
 - Historial de migraciones: archivos versionados en DentalConnect.Infrastructure/Persistence/Migrations.
 
 Los artefactos de evidencia se conservan 90 días. Para la revisión académica, guardar el enlace al run, su estado, métricas reales de cobertura y conteo/severidad de alertas al terminar cada ejecución.
+
+### Ejecución verificada en develop
+
+El 15-Nov-2026, para el commit `4b9267b87262056796780d4018e2fe2239009189`, GitHub Actions reportó éxito en:
+
+- [Pruebas backend y cobertura](https://github.com/AltaEli03/DentalConnect-back/actions/runs/43735597335).
+- [Ciclo de migraciones PostgreSQL](https://github.com/AltaEli03/DentalConnect-back/actions/runs/43735597231).
+- [CodeQL](https://github.com/AltaEli03/DentalConnect-back/actions/runs/43735597431).
+
+La prueba de migraciones se ejecuta en PostgreSQL efímero del runner; no demuestra restauración de una copia de AWS ni cambia la base productiva. El respaldo y su restauración continúan como validación operativa de TEC-11.
