@@ -2,9 +2,8 @@ name: CodeQL static analysis
 
 on:
   push:
-    branches: [main, Sprint-7-Emanuel]
-  pull_request:
-    branches: [main]
+    branches: [main, develop, release]
+  pull_request: {}
   schedule:
     - cron: '23 6 * * 1'
   workflow_dispatch:

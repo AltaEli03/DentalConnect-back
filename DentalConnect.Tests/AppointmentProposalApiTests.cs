@@ -596,6 +596,8 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
             using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
             using var proposed = await PostProposalAsync(clinic, ids.AppointmentId, ids.ProposedStartsAt);
             Assert.Equal(HttpStatusCode.OK, proposed.StatusCode);
+            var patientNotices = await GetUserNotificationsAsync(ids.AppointmentId);
+            Assert.Contains(patientNotices, n => n.RecipientType == "PATIENT" && n.EventType == ProposalEvent);
 
             using var patient = NewClient(null, subject: ids.PatientSubject);
             using var response = await PostAcceptAsync(patient, ids.AppointmentId);
@@ -617,6 +619,8 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
 
             var events = await GetEventsAsync(ids.AppointmentId);
             Assert.Contains(events, e => e.EventType == AcceptedEvent);
+            var notices = await GetUserNotificationsAsync(ids.AppointmentId);
+            Assert.Contains(notices, n => n.RecipientType == "CLINIC" && n.EventType == AcceptedEvent);
         }
         finally { await CleanupAsync(ids); }
     }
@@ -650,6 +654,8 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
 
             var events = await GetEventsAsync(ids.AppointmentId);
             Assert.Contains(events, e => e.EventType == RejectedEvent);
+            var notices = await GetUserNotificationsAsync(ids.AppointmentId);
+            Assert.Contains(notices, n => n.RecipientType == "CLINIC" && n.EventType == RejectedEvent);
         }
         finally { await CleanupAsync(ids); }
     }
@@ -1276,6 +1282,13 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         using var scope = _fixture.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DentalConnectDbContext>();
         return await db.ClinicNotificationEvents.AsNoTracking().Where(e => e.AppointmentId == appointmentId).ToListAsync();
+    }
+
+    private async Task<List<UserNotification>> GetUserNotificationsAsync(string appointmentId)
+    {
+        using var scope = _fixture.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DentalConnectDbContext>();
+        return await db.UserNotifications.AsNoTracking().Where(n => n.AppointmentId == appointmentId).ToListAsync();
     }
 
     private static Appointment NewAppointment(string clinicId, string dentistId, string serviceId, DateTimeOffset start, int durationMinutes, string status, string? patientSubject = null) =>
