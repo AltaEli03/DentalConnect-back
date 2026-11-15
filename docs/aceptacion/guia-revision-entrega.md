@@ -33,6 +33,8 @@ Comprobaciones GET/OPTIONS desde la sesión de trabajo, sin credenciales ni dato
 
 Esto confirma el acceso público al despliegue actual y sus rutas anónimas. No confirma todavía el comportamiento autenticado de citas, el SHA del backend que está ejecutándose ni la restauración de respaldo. La comprobación de `/api/health` debe repetirse tras cada publicación de backend.
 
+GitHub Actions registra el workflow de despliegue AWS exitoso en `main` para `8fab14e9683edfc94e4fb3b7fb267ae23230bc79`: [Backend CI and AWS deployment](https://github.com/AltaEli03/DentalConnect-back/actions/runs/43685117936). El backend de `develop` está en `4b9267b87262056796780d4018e2fe2239009189`; no se afirma que ese commit esté publicado. La promoción `develop` → `release` → `main` requiere completar aceptación y respaldos pendientes.
+
 Los resultados cambian con cada commit. Consultar el SHA y la conclusión del run antes de una demostración.
 
 ## Prueba manual antes de la revisión
