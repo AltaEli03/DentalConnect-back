@@ -1,0 +1,79 @@
+# .NET build output
+bin/
+obj/
+publish/
+artifacts/
+*.nupkg
+*.snupkg
+
+# .NET test output
+TestResults/
+coverage/
+coverage-report/
+*.trx
+*.coverage
+*.coveragexml
+*.cobertura.xml
+
+# Logs
+*.log
+logs/
+
+# IDE / editor / user files
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userprefs
+*.userosscache
+*.sln.docstates
+*.swp
+*~
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+appsettings.Local.json
+secrets.json
+*.pfx
+*.p12
+*.key
+*.pem
+.aws/
+.azure/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+
+# Local tooling and workflow output
+.tools/
+migration-list.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Merge/rebase leftovers
+*.orig
+*.rej
+
+# Planning scratch
+.superpowers/
+
+# OpenCode generated skill copies (source lives in .agents/skills)
+.opencode/skills/
+
+# Project agent configuration is tracked on purpose:
+# .agents/, .opencode/agents/, opencode.json and skills-lock.json are shared
+# with collaborators so the project conventions travel with the repo.
