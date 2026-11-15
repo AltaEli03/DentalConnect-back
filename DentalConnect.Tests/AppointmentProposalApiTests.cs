@@ -1069,6 +1069,80 @@ public sealed class AppointmentProposalApiTests(PostgresApiFixture fixture)
         finally { await CleanupAsync(ids); }
     }
 
+    [PostgresFact]
+    public async Task ClinicList_IncludesPatientContact()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            using var clinic = NewClient("CLINIC_ADMIN", ids.ClinicId);
+            using var response = await clinic.GetAsync("/api/appointments");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var data = (await ReadJsonAsync(response)).RootElement.GetProperty("data");
+            var item = data.EnumerateArray().Single(x => x.GetProperty("id").GetString() == ids.AppointmentId);
+            Assert.True(item.TryGetProperty("patient", out var patient));
+            Assert.Equal(JsonValueKind.Object, patient.ValueKind);
+            Assert.True(patient.TryGetProperty("phone", out _));
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
+    public async Task Mine_WithoutToken_Returns401()
+    {
+        if (!_fixture.Available) return;
+        using var client = _fixture.Factory!.CreateClient();
+        using var response = await client.GetAsync("/api/appointments/mine");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [PostgresFact]
+    public async Task Mine_ReturnsOnlyThePatientsAppointmentsWithNames()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync(withOtherClinic: true);
+        try
+        {
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+            using var response = await patient.GetAsync("/api/appointments/mine");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var data = (await ReadJsonAsync(response)).RootElement.GetProperty("data");
+            Assert.Equal(1, data.GetArrayLength());
+            var item = data[0];
+            Assert.Equal(ids.AppointmentId, item.GetProperty("id").GetString());
+            Assert.NotEqual(ids.OtherAppointmentId, item.GetProperty("id").GetString());
+            Assert.StartsWith("Clinic", item.GetProperty("clinic").GetProperty("name").GetString());
+            Assert.Equal("Test", item.GetProperty("dentist").GetProperty("firstName").GetString());
+            Assert.StartsWith("Service", item.GetProperty("service").GetProperty("name").GetString());
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
+    [PostgresFact]
+    public async Task Mine_OrdersByStartsAtDescending()
+    {
+        if (!_fixture.Available) return;
+        var ids = await SeedAsync();
+        try
+        {
+            var laterStart = ids.OriginalStartsAt.AddDays(1);
+            await UpdateAsync(db =>
+            {
+                db.Appointments.Add(NewAppointment(ids.ClinicId, ids.DentistId, ids.ServiceId, laterStart, 30, "CONFIRMED", ids.PatientSubject));
+            });
+
+            using var patient = NewClient(null, subject: ids.PatientSubject);
+            using var response = await patient.GetAsync("/api/appointments/mine");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var data = (await ReadJsonAsync(response)).RootElement.GetProperty("data");
+            Assert.Equal(2, data.GetArrayLength());
+            Assert.Equal(laterStart, data[0].GetProperty("startsAt").GetDateTimeOffset());
+            Assert.Equal(ids.OriginalStartsAt, data[1].GetProperty("startsAt").GetDateTimeOffset());
+        }
+        finally { await CleanupAsync(ids); }
+    }
+
     private HttpClient NewClient(string? role = "CLINIC_ADMIN", string? clinicId = null, string subject = "test-user")
     {
         var client = _fixture.Factory!.CreateClient();
