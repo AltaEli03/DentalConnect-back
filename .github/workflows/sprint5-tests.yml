@@ -2,7 +2,6 @@ name: Sprint 5 backend tests
 
 on:
   pull_request:
-    branches: [main]
     paths:
       - DentalConnect/**
       - DentalConnect.Domain/**
@@ -11,7 +10,7 @@ on:
       - DentalConnect.slnx
       - .github/workflows/sprint5-tests.yml
   push:
-    branches: [main, Sprint-7-Emanuel]
+    branches: [main, develop, release]
     paths:
       - DentalConnect/**
       - DentalConnect.Domain/**
