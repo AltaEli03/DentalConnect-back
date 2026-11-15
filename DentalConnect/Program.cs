@@ -40,6 +40,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
 });
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<IClinicRepository, EfClinicRepository>();
+builder.Services.AddScoped<IProposalExpirationProcessor, ProposalExpirationProcessor>();
+builder.Services.AddOptions<ProposalExpirationOptions>()
+    .Bind(builder.Configuration.GetSection(ProposalExpirationOptions.SectionName))
+    .Validate(options => options.PollIntervalSeconds > 0, "ProposalExpiration:PollIntervalSeconds must be positive")
+    .Validate(options => options.BatchSize > 0, "ProposalExpiration:BatchSize must be positive")
+    .ValidateOnStart();
+if (!builder.Environment.IsEnvironment("Testing"))
+    builder.Services.AddHostedService<ProposalExpirationWorker>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(frontendOrigins)
     .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS").AllowAnyHeader()));
