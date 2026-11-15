@@ -15,6 +15,7 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
     public DbSet<DentistScheduleBlock> DentistScheduleBlocks => Set<DentistScheduleBlock>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<ClinicNotificationEvent> ClinicNotificationEvents => Set<ClinicNotificationEvent>();
+    public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -177,6 +178,27 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
             entity.Property(e => e.EventType).HasMaxLength(64).IsRequired();
             entity.HasOne<Appointment>().WithMany().HasForeignKey(e => e.AppointmentId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.AppointmentId, e.EventType }).IsUnique();
+        });
+
+        modelBuilder.Entity<UserNotification>(entity =>
+        {
+            entity.ToTable("UserNotification", table => table.HasCheckConstraint(
+                "CK_UserNotification_RecipientType", "\"recipientType\" IN ('PATIENT','CLINIC')"));
+            entity.HasKey(e => e.Id).HasName("UserNotification_pkey");
+            entity.Property(e => e.Id).HasColumnName("id").IsRequired();
+            entity.Property(e => e.RecipientType).HasColumnName("recipientType").HasMaxLength(16).IsRequired();
+            entity.Property(e => e.RecipientKey).HasColumnName("recipientKey").HasMaxLength(256).IsRequired();
+            entity.Property(e => e.AppointmentId).HasColumnName("appointmentId").IsRequired();
+            entity.Property(e => e.EventType).HasColumnName("eventType").HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Title).HasColumnName("title").HasMaxLength(120).IsRequired();
+            entity.Property(e => e.Message).HasColumnName("message").HasMaxLength(500).IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("CURRENT_TIMESTAMP").IsRequired();
+            entity.Property(e => e.ReadAt).HasColumnName("readAt");
+            entity.HasOne<Appointment>().WithMany().HasForeignKey(e => e.AppointmentId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.RecipientType, e.RecipientKey, e.CreatedAt })
+                .HasDatabaseName("IX_UserNotification_Recipient_CreatedAt");
+            entity.HasIndex(e => new { e.RecipientType, e.RecipientKey, e.AppointmentId, e.EventType })
+                .HasDatabaseName("IX_UserNotification_Recipient_Appointment_Event").IsUnique();
         });
     }
 

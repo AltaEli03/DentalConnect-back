@@ -100,6 +100,8 @@ public static class AppointmentEndpoints
             };
             db.Appointments.Add(appointment);
             db.ClinicNotificationEvents.Add(new ClinicNotificationEvent { AppointmentId = appointment.Id });
+            await QueueNotificationAsync(db, "PATIENT", patient, appointment.Id, "APPOINTMENT_REQUESTED", "Solicitud enviada", "Tu solicitud quedó pendiente de revisión por el consultorio.", ct);
+            await QueueNotificationAsync(db, "CLINIC", body.ClinicId, appointment.Id, "APPOINTMENT_REQUESTED", "Nueva solicitud de cita", "Un paciente envió una solicitud que requiere revisión.", ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return AppointmentResponse(appointment, StatusCodes.Status201Created);
@@ -234,6 +236,7 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
             if (!slots.Any(s => s.StartsAt == appointment.StartsAt && s.EndsAt == appointment.EndsAt)) { await tx.RollbackAsync(ct); return Conflict("SLOT_UNAVAILABLE", "El horario ya no está disponible"); }
             appointment.Status = "CONFIRMED";
             db.ClinicNotificationEvents.Add(new ClinicNotificationEvent { AppointmentId = appointment.Id, EventType = "APPOINTMENT_CONFIRMED" });
+            await QueueNotificationAsync(db, "PATIENT", appointment.PatientSubject, appointment.Id, "APPOINTMENT_CONFIRMED", "Cita confirmada", "El consultorio confirmó tu solicitud de cita.", ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return AppointmentResponse(appointment, StatusCodes.Status200OK);
@@ -264,6 +267,7 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
             appointment.RejectedAt = DateTimeOffset.UtcNow;
             appointment.RejectedBy = actor;
             db.ClinicNotificationEvents.Add(new ClinicNotificationEvent { AppointmentId = appointment.Id, EventType = "APPOINTMENT_REJECTED" });
+            await QueueNotificationAsync(db, "PATIENT", appointment.PatientSubject, appointment.Id, "APPOINTMENT_REJECTED", "Solicitud rechazada", "El consultorio respondió a tu solicitud. Consulta el motivo en Mis citas.", ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return AppointmentResponse(appointment, StatusCodes.Status200OK);
@@ -329,6 +333,9 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
                 notice.CreatedAt = now;
             }
 
+            await QueueNotificationAsync(db, "PATIENT", appointment.PatientSubject, appointment.Id, AlternativeProposedEvent,
+                "Nuevo horario propuesto", "El consultorio propuso otro horario. Revísalo en Mis citas.", ct);
+
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return AppointmentResponse(appointment, StatusCodes.Status200OK);
@@ -377,6 +384,8 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
                 appointment.ProposalExpiresAt = null;
                 // NOTE (DENT-31): barrido proactivo y aviso de vencimiento en TEC-07.
                 await QueueClinicEventAsync(db, appointment.Id, AlternativeExpiredEvent, now, ct);
+                await QueueNotificationAsync(db, "CLINIC", appointment.ClinicId, appointment.Id, AlternativeExpiredEvent,
+                    "Propuesta vencida", "La propuesta venció y la solicitud volvió a pendiente.", ct);
                 await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
                 return Conflict("PROPOSAL_EXPIRED", "La propuesta venció; la solicitud volvió a pendiente");
@@ -421,6 +430,8 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
                 appointment.ProposedEndsAt = null;
                 appointment.ProposalExpiresAt = null;
                 await QueueClinicEventAsync(db, appointment.Id, AlternativeAcceptedEvent, now, ct);
+                await QueueNotificationAsync(db, "CLINIC", appointment.ClinicId, appointment.Id, AlternativeAcceptedEvent,
+                    "Horario alternativo aceptado", "El paciente aceptó el horario que propusiste.", ct);
             }
             else
             {
@@ -428,6 +439,8 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
                 appointment.RejectedAt = now;
                 appointment.RejectedBy = patient;
                 await QueueClinicEventAsync(db, appointment.Id, AlternativeRejectedEvent, now, ct);
+                await QueueNotificationAsync(db, "CLINIC", appointment.ClinicId, appointment.Id, AlternativeRejectedEvent,
+                    "Horario alternativo rechazado", "El paciente rechazó el horario propuesto.", ct);
             }
 
             await db.SaveChangesAsync(ct);
@@ -459,6 +472,33 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
         }
         notice.ProcessedAt = null;
         notice.CreatedAt = now;
+    }
+
+    private static async Task QueueNotificationAsync(
+        DentalConnectDbContext db, string recipientType, string recipientKey, string appointmentId,
+        string eventType, string title, string message, CancellationToken ct)
+    {
+        var notification = await db.UserNotifications.SingleOrDefaultAsync(n =>
+            n.RecipientType == recipientType && n.RecipientKey == recipientKey &&
+            n.AppointmentId == appointmentId && n.EventType == eventType, ct);
+        if (notification is null)
+        {
+            db.UserNotifications.Add(new UserNotification
+            {
+                RecipientType = recipientType,
+                RecipientKey = recipientKey,
+                AppointmentId = appointmentId,
+                EventType = eventType,
+                Title = title,
+                Message = message
+            });
+            return;
+        }
+
+        notification.Title = title;
+        notification.Message = message;
+        notification.CreatedAt = DateTimeOffset.UtcNow;
+        notification.ReadAt = null;
     }
 
     private static bool TryGetClinicContext(HttpContext http, out string clinicId, out string actor)

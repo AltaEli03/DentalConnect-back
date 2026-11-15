@@ -2,14 +2,13 @@ name: Database migration lifecycle
 
 on:
   pull_request:
-    branches: [main]
     paths:
       - 'DentalConnect.Infrastructure/**'
       - 'DentalConnect/**'
       - 'DentalConnect.slnx'
       - '.github/workflows/database-migrations.yml'
   push:
-    branches: [main]
+    branches: [main, develop, release]
     paths:
       - 'DentalConnect.Infrastructure/**'
       - 'DentalConnect/**'

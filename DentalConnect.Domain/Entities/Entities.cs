@@ -154,3 +154,16 @@ public class ClinicNotificationEvent
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ProcessedAt { get; set; }
 }
+
+public class UserNotification
+{
+    public string Id { get; set; } = CuidGenerator.NewId();
+    public string RecipientType { get; set; } = string.Empty;
+    public string RecipientKey { get; set; } = string.Empty;
+    public string AppointmentId { get; set; } = string.Empty;
+    public string EventType { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? ReadAt { get; set; }
+}
