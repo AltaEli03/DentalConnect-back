@@ -26,4 +26,4 @@ El test es reproducible y demuestra el formato/destino de restauración. No sust
 
 ## Evidencia
 
-El enlace al run exitoso se añadirá después de que esta rama se integre y Actions ejecute `PostgreSQL fictitious-data backup and restore`. El ensayo automatizado no demuestra aún la restauración de un snapshot real de RDS.
+[Ejecución exitosa de PostgreSQL fictitious-data backup and restore (develop)](https://github.com/AltaEli03/DentalConnect-back/actions/runs/43743386444). El ensayo automatizado no demuestra aún la restauración de un snapshot real de RDS.
