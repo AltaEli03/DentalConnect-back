@@ -18,6 +18,21 @@ Esta guía separa evidencia automatizada de comprobaciones que requieren AWS, el
 | Análisis estático backend | [CodeQL 43735597431](https://github.com/AltaEli03/DentalConnect-back/actions/runs/43735597431) | Ejecución exitosa; consultar Security / Code scanning para hallazgos |
 | Frontend lint, 91 pruebas, 23 pares de contraste y build PWA | PR [#25](https://github.com/AltaEli03/DentalConnect-front/pull/25) | CI aprobado e integrado a `develop` |
 
+## Verificación pública HTTPS (15-Nov-2026)
+
+Comprobaciones GET/OPTIONS desde la sesión de trabajo, sin credenciales ni datos privados:
+
+| Recurso | Resultado |
+| --- | --- |
+| [Frontend](https://main.d63zai2tg2i2u.amplifyapp.com/) y ruta `/clinics/` | HTTP 200 |
+| [Manifest PWA](https://main.d63zai2tg2i2u.amplifyapp.com/manifest.webmanifest) | HTTP 200, `application/manifest+json` |
+| [API health](https://d3eod9k2xa8i16.cloudfront.net/api/health) | HTTP 200 |
+| `GET /api/clinics` | HTTP 200; seis clínicas de catálogo |
+| `GET /api/clinics/{id}` para una clínica del catálogo | HTTP 200 |
+| `OPTIONS /api/clinics` con Origin de Amplify | HTTP 204; origen y métodos CORS permitidos |
+
+Esto confirma el acceso público al despliegue actual y sus rutas anónimas. No confirma todavía el comportamiento autenticado de citas, el SHA del backend que está ejecutándose ni la restauración de respaldo. La comprobación de `/api/health` debe repetirse tras cada publicación de backend.
+
 Los resultados cambian con cada commit. Consultar el SHA y la conclusión del run antes de una demostración.
 
 ## Prueba manual antes de la revisión
@@ -41,6 +56,6 @@ Completar en el sitio HTTPS actual y adjuntar capturas sin mostrar secretos ni d
 
 ## Incidencias conocidas y siguientes acciones
 
-- La sesión de AWS estaba expirada en la inspección del 15-Nov-2026; no se pudo verificar CloudWatch, ECS, health endpoint ni la restauración de respaldo en esa sesión.
+- La sesión de AWS estaba expirada en la inspección del 15-Nov-2026; la respuesta pública del health endpoint se comprobó, pero no se pudieron inspeccionar CloudWatch, ECS, variables/secretos ni la restauración de respaldo en consola.
 - Iniciar sesión en AWS y ejecutar los puntos 7 y 8 con la configuración existente; no crear recursos hasta confirmar costo y límites de la cuenta.
 - DENT-33 está en pruebas; falta llenar la matriz manual de accesibilidad y aislamiento de roles sobre el despliegue HTTPS.
