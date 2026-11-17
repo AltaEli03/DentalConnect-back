@@ -1,0 +1,51 @@
+name: PostgreSQL fictitious-data backup and restore
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/verify-backup-restore.sh'
+      - '.github/workflows/database-backup-restore.yml'
+  push:
+    branches: [main, develop, release]
+    paths:
+      - 'scripts/verify-backup-restore.sh'
+      - '.github/workflows/database-backup-restore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup-restore:
+    name: Dump, restore, and verify relational data
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install PostgreSQL 16 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client-16
+      - name: Dump fictitious data, restore to a fresh database, and verify
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+        run: bash scripts/verify-backup-restore.sh

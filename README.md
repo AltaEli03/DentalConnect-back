@@ -12,10 +12,12 @@ Es el backend del frontend [DentalConnect-front](https://github.com/AltaEli03/De
 - [Configuración](#configuración)
 - [Ejecución local](#ejecución-local)
 - [Base de datos](#base-de-datos)
+- [Respaldo y restauración](docs/base-de-datos/respaldo-restauracion.md)
 - [Endpoints](#endpoints)
 - [Pruebas](#pruebas)
 - [Despliegue en AWS](#despliegue-en-aws)
 - [Integración con el frontend](#integración-con-el-frontend)
+- [Guía de revisión y aceptación](docs/aceptacion/guia-revision-entrega.md)
 
 ## Arquitectura
 
@@ -77,11 +79,15 @@ Copie `.env.example` como referencia y defina las variables en su entorno. Varia
 | `FRONTEND_ORIGIN` | No | Orígenes permitidos por CORS, separados por comas. Valor por defecto: `http://localhost:5173`. |
 | `PORT` | No | Puerto de escucha. Valor por defecto: `3000` (si no se define `ASPNETCORE_URLS`). |
 | `ASPNETCORE_ENVIRONMENT` | No | `Development`, `Production`, etc. |
+| `ProposalExpiration__PollIntervalSeconds` | No | Intervalo del worker de vencimientos. Valor por defecto: `60` segundos. |
+| `ProposalExpiration__BatchSize` | No | Máximo de propuestas evaluadas en cada pasada. Valor por defecto: `100`. |
 
 \* Si no se define `DATABASE_URL` ni `ConnectionStrings__DefaultConnection`, se usa el valor local de desarrollo. En AWS se exigen las variables `DB_*`.
 \*\* Obligatorias fuera de `Development`; si faltan, la aplicación no arranca.
 
 La API no emite tokens ni cookies de sesión. El inicio de sesión lo realiza el frontend directamente contra Cognito.
+
+El worker de vencimientos se inicia junto con la API, omite los modos `--seed` y `--migrate`, y no requiere secretos adicionales ni cambios de esquema. Cada vencimiento y su aviso in-app al consultorio se guardan en una transacción; los valores de intervalo y lote se pueden ajustar con las variables de entorno de la tabla.
 
 ## Ejecución local
 
@@ -193,7 +199,7 @@ curl -X POST http://localhost:3000/api/auth/register \
 dotnet test
 ```
 
-Las pruebas (`DentalConnect.Tests/ApiTests.cs`) levantan la API en memoria con un repositorio y un proveedor de identidad simulados, así que no requieren PostgreSQL ni llamadas a AWS.
+Las pruebas de reglas puras no requieren PostgreSQL. Las pruebas de API, agenda, migraciones y vencimientos usan la variable `TEST_DATABASE_URL`; los workflows de GitHub levantan PostgreSQL 16 efímero para ejecutarlas. No requieren llamadas a AWS.
 
 ## Despliegue en AWS
 
