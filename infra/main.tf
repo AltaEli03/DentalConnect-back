@@ -389,7 +389,8 @@ resource "aws_ecs_service" "api" {
   task_definition                    = aws_ecs_task_definition.api.arn
   desired_count                      = 0
   launch_type                        = "FARGATE"
-  deployment_minimum_healthy_percent = 0
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
 
   network_configuration {
     subnets          = aws_subnet.public[*].id
@@ -401,6 +402,11 @@ resource "aws_ecs_service" "api" {
     target_group_arn = aws_lb_target_group.api.arn
     container_name   = "api"
     container_port   = 3000
+  }
+
+  # GitHub Actions owns the running image and replica count after bootstrap.
+  lifecycle {
+    ignore_changes = [task_definition, desired_count]
   }
 
   depends_on = [aws_lb_listener.http]
