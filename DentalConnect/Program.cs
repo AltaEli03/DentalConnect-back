@@ -100,6 +100,7 @@ app.Use(async (context, next) =>
 if (app.Environment.IsDevelopment()) app.MapOpenApi();
 app.UseCors();
 app.UseAuthentication();
+app.UseClinicMembershipClaims();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapGet("/api/health", () => Results.Json(new { status = "ok", service = "DentalConnect API" }));
@@ -143,7 +144,7 @@ authGroup.MapPost("/resend-verification-code", async (ResendCodeRequest? body, A
     var email = InputValidator.ValidateEmailOnly(body); if (await auth.ResendAsync(email, ct) == IdentityOutcome.RateLimited) return RateLimited();
     return Results.Json(new { data = new { message = "Si la cuenta requiere verificación, se enviará un código" } }, statusCode: 202);
 });
-app.MapDentistEndpoints();app.MapPublicAvailabilityEndpoints();app.MapAppointmentEndpoints();app.MapNotificationEndpoints();
+app.MapDentistEndpoints();app.MapPublicAvailabilityEndpoints();app.MapAppointmentEndpoints();app.MapNotificationEndpoints();app.MapClinicOnboardingEndpoints();
 app.MapFallback(() => Results.Json(new { error = new { code = "NOT_FOUND", message = "Ruta no encontrada" } }, statusCode: 404));
 app.Run();
 public partial class Program;
