@@ -123,7 +123,9 @@ jobs:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |
           set -euo pipefail
+          task_role_arn="arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/DentalConnectApiTaskRole"
           jq \
+            --arg task_role "$task_role_arn" \
             --arg image "$IMAGE_URI" \
             --arg execution_role "$AWS_ECS_EXECUTION_ROLE_ARN" \
             --arg frontend_origin "$FRONTEND_ORIGIN" \
@@ -133,6 +135,7 @@ jobs:
             --arg cognito_client "$COGNITO_CLIENT_ID" \
             --arg region "$AWS_REGION" \
             '.executionRoleArn = $execution_role
+             | .taskRoleArn = $task_role
              | .containerDefinitions[0].image = $image
              | (.containerDefinitions[0].environment[] | select(.name == "FRONTEND_ORIGIN").value) = $frontend_origin
              | (.containerDefinitions[0].environment[] | select(.name == "DB_HOST").value) = $database_host
