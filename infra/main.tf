@@ -163,6 +163,33 @@ resource "aws_iam_role_policy" "read_database_credentials" {
   })
 }
 
+# This role was bootstrapped in AWS for the existing service. Import it before
+# the first Terraform apply: terraform -chdir=infra import aws_iam_role.api_task DentalConnectApiTaskRole
+resource "aws_iam_role" "api_task" {
+  name = "DentalConnectApiTaskRole"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "clinic_admin_group" {
+  name = "DentalConnectCognitoClinicAdmin"
+  role = aws_iam_role.api_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["cognito-idp:AdminAddUserToGroup"]
+      Resource = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/${var.cognito_user_pool_id}"
+    }]
+  })
+}
+
 resource "aws_lb" "api" {
   name               = "${var.project_name}-api"
   internal           = false
@@ -308,7 +335,7 @@ resource "aws_iam_role_policy" "github_deploy" {
       {
         Effect   = "Allow"
         Action   = ["iam:PassRole"]
-        Resource = aws_iam_role.task_execution.arn
+        Resource = [aws_iam_role.task_execution.arn, aws_iam_role.api_task.arn]
         Condition = {
           StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" }
         }
@@ -324,6 +351,7 @@ resource "aws_ecs_task_definition" "api" {
   cpu                      = 256
   memory                   = 512
   execution_role_arn       = aws_iam_role.task_execution.arn
+  task_role_arn            = aws_iam_role.api_task.arn
 
   container_definitions = jsonencode([{
     name         = "api"
