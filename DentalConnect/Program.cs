@@ -1,40 +1,4 @@
 using System.Threading.RateLimiting;
-using Amazon;
-using Amazon.CognitoIdentityProvider;
-using DentalConnect;
-using DentalConnect.Application.Contracts;
-using DentalConnect.Infrastructure.Persistence;
-using DentalConnect.Infrastructure.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
-
-var builder = WebApplication.CreateBuilder(args);
-
-var port = builder.Configuration["PORT"];
-if (!string.IsNullOrWhiteSpace(port) && string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"]))
-    builder.WebHost.UseUrls($"http://+:{port}");
-
-var frontendOrigins = (builder.Configuration["FRONTEND_ORIGIN"] ?? "http://localhost:5173")
-    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-var dbConnectionString = DentalConnectDbContext.BuildConnectionString(
-    builder.Configuration["DATABASE_URL"] ?? builder.Configuration.GetConnectionString("DefaultConnection"),
-    builder.Configuration["DB_HOST"], builder.Configuration["DB_NAME"], builder.Configuration["DB_USERNAME"],
-    builder.Configuration["DB_PASSWORD"], builder.Configuration["DB_PORT"]);
-builder.Services.AddDbContext<DentalConnectDbContext>(options => { options.UseNpgsql(dbConnectionString); if (args.Contains("--seed") || args.Contains("--migrate")) options.ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)); });
-
-var cognitoPoolId = builder.Configuration["COGNITO_USER_POOL_ID"];
-var cognitoClientId = builder.Configuration["COGNITO_CLIENT_ID"];
-if (!builder.Environment.IsDevelopment() && (string.IsNullOrWhiteSpace(cognitoPoolId) || string.IsNullOrWhiteSpace(cognitoClientId)))
-    throw new InvalidOperationException("COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID are required outside Development");
-var awsRegion = builder.Configuration["AWS_REGION"] ?? "us-east-1";
-builder.Services.AddSingleton<IAmazonCognitoIdentityProvider>(_ => new AmazonCognitoIdentityProviderClient(RegionEndpoint.GetBySystemName(awsRegion)));
-builder.Services.AddSingleton(new CognitoOptions(cognitoPoolId ?? string.Empty, cognitoClientId ?? string.Empty));
-builder.Services.AddSingleton<IIdentityProvider, CognitoIdentityProvider>();
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
-{
-    if (!string.IsNullOrWhiteSpace(cognitoPoolId))
-        options.Authority = $"https://cognito-idp.{awsRegion}.amazonaws.com/{cognitoPoolId}";
     if (!string.IsNullOrWhiteSpace(cognitoClientId)) options.Audience = cognitoClientId;
     options.TokenValidationParameters.RoleClaimType = "cognito:groups";
 });
@@ -52,6 +16,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(frontendOrigins)
     .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS").AllowAnyHeader()));
 
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -66,6 +31,7 @@ builder.Services.AddRateLimiter(options =>
 });
 builder.Services.AddOpenApi();
 var app = builder.Build();
+
 
 if (args.Contains("--seed"))
 {
@@ -100,6 +66,7 @@ app.Use(async (context, next) =>
 if (app.Environment.IsDevelopment()) app.MapOpenApi();
 app.UseCors();
 app.UseAuthentication();
+app.UseClinicMembershipClaims();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapGet("/api/health", () => Results.Json(new { status = "ok", service = "DentalConnect API" }));
@@ -112,38 +79,3 @@ app.MapGet("/api/clinics", async (HttpContext ctx, IClinicRepository clinics, Ca
 app.MapGet("/api/clinics/{id}", async (string id, IClinicRepository clinics, CancellationToken ct) =>
 {
     var validId = InputValidator.ValidateClinicId(id); var clinic = await clinics.FindActiveByIdAsync(validId, ct);
-    if (clinic is null) return Results.Json(new { error = new { code = "CLINIC_NOT_FOUND", message = "Consultorio no encontrado" } }, statusCode: 404);
-    return Results.Json(new { data = clinic });
-});
-static IResult RateLimited() => Results.Json(new { error = new { code = "RATE_LIMITED", message = "Demasiados intentos; inténtalo más tarde" } }, statusCode: 429);
-var authGroup = app.MapGroup("/api/auth").RequireRateLimiting("auth");
-authGroup.MapPost("/register", async (RegisterRequest? body, AuthService auth, CancellationToken ct) =>
-{
-    var (firstName, lastName, email, phone, password) = InputValidator.ValidateRegistration(body);
-    return await auth.RegisterAsync(firstName, lastName, email, phone, password, ct) switch
-    {
-        IdentityOutcome.Success => Results.Json(new { data = new { message = "Código de verificación enviado" } }, statusCode: 201),
-        IdentityOutcome.EmailExists => Results.Json(new { error = new { code = "EMAIL_EXISTS", message = "No fue posible completar el registro" } }, statusCode: 409),
-        IdentityOutcome.InvalidPassword => throw new RequestValidationException(new Dictionary<string, string[]> { ["password"] = ["La contraseña no cumple los requisitos"] }),
-        _ => RateLimited()
-    };
-});
-authGroup.MapPost("/verify-email", async (VerifyEmailRequest? body, AuthService auth, CancellationToken ct) =>
-{
-    var (email, code) = InputValidator.ValidateVerify(body);
-    return await auth.VerifyAsync(email, code, ct) switch
-    {
-        IdentityOutcome.Success => Results.Json(new { data = new { message = "Correo verificado" } }),
-        IdentityOutcome.RateLimited => RateLimited(),
-        _ => Results.Json(new { error = new { code = "INVALID_VERIFICATION_CODE", message = "El código no es válido o expiró" } }, statusCode: 400)
-    };
-});
-authGroup.MapPost("/resend-verification-code", async (ResendCodeRequest? body, AuthService auth, CancellationToken ct) =>
-{
-    var email = InputValidator.ValidateEmailOnly(body); if (await auth.ResendAsync(email, ct) == IdentityOutcome.RateLimited) return RateLimited();
-    return Results.Json(new { data = new { message = "Si la cuenta requiere verificación, se enviará un código" } }, statusCode: 202);
-});
-app.MapDentistEndpoints();app.MapPublicAvailabilityEndpoints();app.MapAppointmentEndpoints();app.MapNotificationEndpoints();
-app.MapFallback(() => Results.Json(new { error = new { code = "NOT_FOUND", message = "Ruta no encontrada" } }, statusCode: 404));
-app.Run();
-public partial class Program;
