@@ -65,7 +65,7 @@ public static class ClinicOnboardingEndpoints
         var subject=ctx.User.FindFirst("sub")?.Value; if(subject is null) return Results.Unauthorized(); var conn=(NpgsqlConnection)db.Database.GetDbConnection(); await conn.OpenAsync(ct);
         await using var cmd=new NpgsqlCommand("""SELECT "id","clinicName","status","reviewNote","createdAt","reviewedAt" FROM "ClinicApplication" WHERE "ownerSubject"=@s ORDER BY "createdAt" DESC LIMIT 1""",conn); cmd.Parameters.AddWithValue("s",subject);
         await using var reader=await cmd.ExecuteReaderAsync(ct); if(!await reader.ReadAsync(ct)) return Results.Ok(new { data=(object?)null });
-        return Results.Ok(new { data=new { id=reader.GetString(0),clinicName=reader.GetString(1),status=reader.GetString(2),reviewNote=reader.IsDBNull(3)?null:reader.GetString(3),createdAt=reader.GetDateTime(4),reviewedAt=reader.IsDBNull(5)?null:reader.GetDateTime(5) } });
+        return Results.Ok(new { data=new { id=reader.GetString(0),clinicName=reader.GetString(1),status=reader.GetString(2),reviewNote=reader.IsDBNull(3)?null:reader.GetString(3),createdAt=reader.GetDateTime(4),reviewedAt=reader.IsDBNull(5)?null:(DateTime?)reader.GetDateTime(5) } });
     }
 
     private static async Task<IResult> ListPendingAsync(HttpContext ctx, DentalConnectDbContext db, CancellationToken ct)
