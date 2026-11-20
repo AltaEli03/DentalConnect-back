@@ -1,27 +1,34 @@
 using System.Threading.RateLimiting;
 using Amazon;
 using Amazon.CognitoIdentityProvider;
+using Amazon.S3;
 using DentalConnect;
 using DentalConnect.Application.Contracts;
 using DentalConnect.Infrastructure.Persistence;
 using DentalConnect.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-
 var port = builder.Configuration["PORT"];
 if (!string.IsNullOrWhiteSpace(port) && string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"]))
     builder.WebHost.UseUrls($"http://+:{port}");
 
+builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = 5 * 1024 * 1024 + 64 * 1024);
 var frontendOrigins = (builder.Configuration["FRONTEND_ORIGIN"] ?? "http://localhost:5173")
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 var dbConnectionString = DentalConnectDbContext.BuildConnectionString(
     builder.Configuration["DATABASE_URL"] ?? builder.Configuration.GetConnectionString("DefaultConnection"),
     builder.Configuration["DB_HOST"], builder.Configuration["DB_NAME"], builder.Configuration["DB_USERNAME"],
     builder.Configuration["DB_PASSWORD"], builder.Configuration["DB_PORT"]);
-builder.Services.AddDbContext<DentalConnectDbContext>(options => { options.UseNpgsql(dbConnectionString); if (args.Contains("--seed") || args.Contains("--migrate")) options.ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)); });
+builder.Services.AddDbContext<DentalConnectDbContext>(options =>
+{
+    options.UseNpgsql(dbConnectionString);
+    if (args.Contains("--seed") || args.Contains("--migrate"))
+        options.ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+});
 
 var cognitoPoolId = builder.Configuration["COGNITO_USER_POOL_ID"];
 var cognitoClientId = builder.Configuration["COGNITO_CLIENT_ID"];
@@ -29,12 +36,12 @@ if (!builder.Environment.IsDevelopment() && (string.IsNullOrWhiteSpace(cognitoPo
     throw new InvalidOperationException("COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID are required outside Development");
 var awsRegion = builder.Configuration["AWS_REGION"] ?? "us-east-1";
 builder.Services.AddSingleton<IAmazonCognitoIdentityProvider>(_ => new AmazonCognitoIdentityProviderClient(RegionEndpoint.GetBySystemName(awsRegion)));
+builder.Services.AddSingleton<IAmazonS3>(_ => new AmazonS3Client(RegionEndpoint.GetBySystemName(awsRegion)));
 builder.Services.AddSingleton(new CognitoOptions(cognitoPoolId ?? string.Empty, cognitoClientId ?? string.Empty));
 builder.Services.AddSingleton<IIdentityProvider, CognitoIdentityProvider>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
 {
-    if (!string.IsNullOrWhiteSpace(cognitoPoolId))
-        options.Authority = $"https://cognito-idp.{awsRegion}.amazonaws.com/{cognitoPoolId}";
+    if (!string.IsNullOrWhiteSpace(cognitoPoolId)) options.Authority = $"https://cognito-idp.{awsRegion}.amazonaws.com/{cognitoPoolId}";
     if (!string.IsNullOrWhiteSpace(cognitoClientId)) options.Audience = cognitoClientId;
     options.TokenValidationParameters.RoleClaimType = "cognito:groups";
 });
@@ -46,12 +53,10 @@ builder.Services.AddOptions<ProposalExpirationOptions>()
     .Validate(options => options.PollIntervalSeconds > 0, "ProposalExpiration:PollIntervalSeconds must be positive")
     .Validate(options => options.BatchSize > 0, "ProposalExpiration:BatchSize must be positive")
     .ValidateOnStart();
-if (!builder.Environment.IsEnvironment("Testing"))
-    builder.Services.AddHostedService<ProposalExpirationWorker>();
+if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<ProposalExpirationWorker>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(frontendOrigins)
     .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS").AllowAnyHeader()));
-
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -69,13 +74,18 @@ var app = builder.Build();
 
 if (args.Contains("--seed"))
 {
-    using var scope = app.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<DentalConnectDbContext>();
-    await db.Database.MigrateAsync(); await DatabaseSeeder.SeedAsync(db); return;
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<DentalConnectDbContext>();
+    await db.Database.MigrateAsync();
+    await DatabaseSeeder.SeedAsync(db);
+    return;
 }
 if (args.Contains("--migrate"))
 {
-    using var scope = app.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<DentalConnectDbContext>();
-    await db.Database.MigrateAsync(); return;
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<DentalConnectDbContext>();
+    await db.Database.MigrateAsync();
+    return;
 }
 app.Use(async (context, next) =>
 {
@@ -108,11 +118,14 @@ app.MapGet("/api/clinics", async (HttpContext ctx, IClinicRepository clinics, Ca
 {
     var search = ctx.Request.Query.ContainsKey("search") ? ctx.Request.Query["search"].ToString() : null;
     var serviceId = ctx.Request.Query.ContainsKey("serviceId") ? ctx.Request.Query["serviceId"].ToString() : null;
-    var filters = InputValidator.ValidateClinicsQuery(search, serviceId); var data = await clinics.ListActiveAsync(filters, ct); return Results.Json(new { data });
+    var filters = InputValidator.ValidateClinicsQuery(search, serviceId);
+    var data = await clinics.ListActiveAsync(filters, ct);
+    return Results.Json(new { data });
 });
 app.MapGet("/api/clinics/{id}", async (string id, IClinicRepository clinics, CancellationToken ct) =>
 {
-    var validId = InputValidator.ValidateClinicId(id); var clinic = await clinics.FindActiveByIdAsync(validId, ct);
+    var validId = InputValidator.ValidateClinicId(id);
+    var clinic = await clinics.FindActiveByIdAsync(validId, ct);
     if (clinic is null) return Results.Json(new { error = new { code = "CLINIC_NOT_FOUND", message = "Consultorio no encontrado" } }, statusCode: 404);
     return Results.Json(new { data = clinic });
 });
@@ -141,10 +154,17 @@ authGroup.MapPost("/verify-email", async (VerifyEmailRequest? body, AuthService 
 });
 authGroup.MapPost("/resend-verification-code", async (ResendCodeRequest? body, AuthService auth, CancellationToken ct) =>
 {
-    var email = InputValidator.ValidateEmailOnly(body); if (await auth.ResendAsync(email, ct) == IdentityOutcome.RateLimited) return RateLimited();
+    var email = InputValidator.ValidateEmailOnly(body);
+    if (await auth.ResendAsync(email, ct) == IdentityOutcome.RateLimited) return RateLimited();
     return Results.Json(new { data = new { message = "Si la cuenta requiere verificación, se enviará un código" } }, statusCode: 202);
 });
-app.MapDentistEndpoints();app.MapPublicAvailabilityEndpoints();app.MapAppointmentEndpoints();app.MapNotificationEndpoints();app.MapClinicOnboardingEndpoints();app.MapClinicManagementEndpoints();
+app.MapDentistEndpoints();
+app.MapPublicAvailabilityEndpoints();
+app.MapAppointmentEndpoints();
+app.MapNotificationEndpoints();
+app.MapClinicOnboardingEndpoints();
+app.MapClinicManagementEndpoints();
+app.MapClinicImageEndpoints();
 app.MapFallback(() => Results.Json(new { error = new { code = "NOT_FOUND", message = "Ruta no encontrada" } }, statusCode: 404));
 app.Run();
 public partial class Program;
