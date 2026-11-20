@@ -76,6 +76,7 @@ Copie `.env.example` como referencia y defina las variables en su entorno. Varia
 | `COGNITO_USER_POOL_ID` | Sí\*\* | Identificador del user pool de Amazon Cognito (`us-east-1_...`). |
 | `COGNITO_CLIENT_ID` | Sí\*\* | Identificador del app client de Cognito, sin secreto. |
 | `AWS_REGION` | No | Región de AWS. Valor por defecto: `us-east-1`. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `MAIL_FROM` | Opcionales | Habilitan el envío de correos de citas por SMTP con TLS. En AWS se inyectan desde un secreto de Secrets Manager; nunca se guardan en Git. |
 | `FRONTEND_ORIGIN` | No | Orígenes permitidos por CORS, separados por comas. Valor por defecto: `http://localhost:5173`. |
 | `PORT` | No | Puerto de escucha. Valor por defecto: `3000` (si no se define `ASPNETCORE_URLS`). |
 | `ASPNETCORE_ENVIRONMENT` | No | `Development`, `Production`, etc. |
@@ -88,6 +89,8 @@ Copie `.env.example` como referencia y defina las variables en su entorno. Varia
 La API no emite tokens ni cookies de sesión. El inicio de sesión lo realiza el frontend directamente contra Cognito.
 
 El worker de vencimientos se inicia junto con la API, omite los modos `--seed` y `--migrate`, y no requiere secretos adicionales ni cambios de esquema. Cada vencimiento y su aviso in-app al consultorio se guardan en una transacción; los valores de intervalo y lote se pueden ajustar con las variables de entorno de la tabla.
+
+El worker de correo de citas se activa solo cuando existen las cinco variables SMTP. Procesa los eventos transaccionales de `ClinicNotificationEvent` (solicitud, confirmación, rechazo y propuesta) con bloqueo `SKIP LOCKED` y marca el evento como procesado únicamente después del envío. Para AWS, configura `AWS_SMTP_SECRET_ARN` como variable de Actions con un secreto JSON que contenga `host`, `port`, `username`, `password` y `from`; el workflow lo inyecta en ECS y Terraform concede lectura al rol de ejecución. Si no se configura, los avisos dentro de la aplicación siguen activos, pero el correo externo queda deshabilitado.
 
 ## Ejecución local
 

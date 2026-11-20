@@ -44,3 +44,9 @@ variable "image_bucket_name" {
   description = "Optional globally unique bucket name; default derives from project, account, and region."
   default     = ""
 }
+
+variable "smtp_secret_arn" {
+  type        = string
+  description = "Optional Secrets Manager ARN with host, port, username, password and from fields for appointment email delivery."
+  default     = ""
+}
