@@ -16,6 +16,8 @@ public sealed class TestAuthHandler(
     public const string SubjectHeader = "X-Test-Sub";
     public const string RoleHeader = "X-Test-Role";
     public const string ClinicHeader = "X-Test-Clinic";
+    public const string EmailHeader = "X-Test-Email";
+    public const string EmailVerifiedHeader = "X-Test-Email-Verified";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -28,6 +30,10 @@ public sealed class TestAuthHandler(
             new("sub", subject),
             new("clinic_id", Request.Headers[ClinicHeader].ToString())
         };
+        if (!string.IsNullOrWhiteSpace(Request.Headers[EmailHeader]))
+            claims.Add(new Claim("email", Request.Headers[EmailHeader].ToString()));
+        if (!string.IsNullOrWhiteSpace(Request.Headers[EmailVerifiedHeader]))
+            claims.Add(new Claim("email_verified", Request.Headers[EmailVerifiedHeader].ToString()));
         var role = Request.Headers[RoleHeader].ToString();
         if (!string.IsNullOrWhiteSpace(role))
             claims.Add(new Claim("cognito:groups", role));
