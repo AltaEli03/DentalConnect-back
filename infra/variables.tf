@@ -37,3 +37,10 @@ variable "bootstrap_image" {
   # replaces this placeholder with the app image before starting a task.
   default = "public.ecr.aws/docker/library/nginx:alpine"
 }
+
+
+variable "image_bucket_name" {
+  type        = string
+  description = "Optional globally unique bucket name; default derives from project, account, and region."
+  default     = ""
+}

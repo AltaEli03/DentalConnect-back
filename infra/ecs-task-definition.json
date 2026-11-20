@@ -19,7 +19,9 @@
         { "name": "DB_NAME", "value": "dentalconnect" },
         { "name": "COGNITO_USER_POOL_ID", "value": "REPLACE_WITH_COGNITO_USER_POOL_ID" },
         { "name": "COGNITO_CLIENT_ID", "value": "REPLACE_WITH_COGNITO_CLIENT_ID" },
-        { "name": "AWS_REGION", "value": "us-east-1" }
+        { "name": "AWS_REGION", "value": "us-east-1" },
+        { "name": "IMAGE_BUCKET_NAME", "value": "REPLACE_WITH_IMAGE_BUCKET_NAME" },
+        { "name": "IMAGE_PUBLIC_BASE_URL", "value": "REPLACE_WITH_IMAGE_PUBLIC_BASE_URL" }
       ],
       "secrets": [
         { "name": "DB_USERNAME", "valueFrom": "REPLACE_WITH_DATABASE_SECRET_ARN:username::" },

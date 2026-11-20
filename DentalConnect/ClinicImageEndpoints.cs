@@ -13,6 +13,8 @@ public static class ClinicImageEndpoints
 
     public static IEndpointRouteBuilder MapClinicImageEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        // Public profiles render through the API; the S3 bucket remains private.
+        endpoints.MapGet("/api/images/{**key}", GetImageAsync);
         endpoints.MapPost("/api/clinics/{clinicId}/management/image", UploadClinicAsync)
             .RequireAuthorization().DisableAntiforgery();
         endpoints.MapPost("/api/clinics/{clinicId}/dentists/{dentistId}/image", UploadDentistAsync)
@@ -39,6 +41,48 @@ public static class ClinicImageEndpoints
     {
         error = new { code = "IMAGE_STORAGE_UNAVAILABLE", message = "El almacenamiento de imágenes no está configurado" }
     }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    private static async Task<IResult> GetImageAsync(string? key, HttpContext context, IAmazonS3 s3,
+        IConfiguration configuration, CancellationToken ct)
+    {
+        var bucket = configuration["IMAGE_BUCKET_NAME"];
+        if (string.IsNullOrWhiteSpace(bucket)) return StorageUnavailable();
+        if (!IsSafeImageKey(key)) return Results.NotFound();
+
+        try
+        {
+            using var image = await s3.GetObjectAsync(bucket, key!, ct);
+            await using var buffer = new MemoryStream();
+            await image.ResponseStream.CopyToAsync(buffer, ct);
+            context.Response.Headers.CacheControl = "public,max-age=86400,immutable";
+            context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return Results.Bytes(buffer.ToArray(), image.Headers.ContentType ?? "application/octet-stream");
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound || ex.ErrorCode == "NoSuchKey")
+        {
+            return Results.NotFound();
+        }
+        catch (AmazonS3Exception)
+        {
+            return Results.Json(new { error = new { code = "IMAGE_READ_FAILED", message = "No se pudo cargar la imagen" } },
+                statusCode: StatusCodes.Status502BadGateway);
+        }
+    }
+
+    private static bool IsSafeImageKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key) || key.Length > 512 || key.Contains('\\') || key.Contains('%')) return false;
+        var segments = key.Split('/');
+        var clinicImage = segments.Length == 3 && segments[0] == "clinic-images";
+        var dentistImage = segments.Length == 4 && segments[0] == "dentist-images";
+        if (!clinicImage && !dentistImage) return false;
+        foreach (var segment in segments.Skip(1).Take(segments.Length - 2))
+            if (segment.Length == 0 || segment.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))) return false;
+        var file = segments[^1];
+        var extension = Path.GetExtension(file);
+        return extension is ".png" or ".jpg" or ".webp" &&
+            Guid.TryParseExact(Path.GetFileNameWithoutExtension(file), "N", out _);
+    }
 
     private static async Task<IResult> UploadClinicAsync(string clinicId, HttpContext context,
         DentalConnectDbContext db, IAmazonS3 s3, IConfiguration configuration, CancellationToken ct)
