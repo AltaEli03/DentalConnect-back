@@ -2,7 +2,7 @@ name: Backend CI and AWS deployment
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop, main]
   push:
     branches: [main]
 
@@ -69,6 +69,8 @@ jobs:
       COGNITO_USER_POOL_ID: ${{ vars.COGNITO_USER_POOL_ID }}
       COGNITO_CLIENT_ID: ${{ vars.COGNITO_CLIENT_ID }}
       API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
+      IMAGE_BUCKET_NAME: ${{ vars.IMAGE_BUCKET_NAME }}
+      IMAGE_PUBLIC_BASE_URL: ${{ vars.IMAGE_PUBLIC_BASE_URL }}
     steps:
       - name: Checkout source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -80,7 +82,7 @@ jobs:
           set -euo pipefail
           for name in AWS_DEPLOY_ROLE_ARN AWS_ECR_REPOSITORY AWS_ECS_CLUSTER AWS_ECS_SERVICE \
             AWS_ECS_EXECUTION_ROLE_ARN AWS_DATABASE_SECRET_ARN AWS_DATABASE_HOST AWS_ECS_SUBNETS \
-            AWS_ECS_SECURITY_GROUP FRONTEND_ORIGIN COGNITO_USER_POOL_ID COGNITO_CLIENT_ID API_HEALTH_URL; do
+            AWS_ECS_SECURITY_GROUP FRONTEND_ORIGIN COGNITO_USER_POOL_ID COGNITO_CLIENT_ID API_HEALTH_URL IMAGE_BUCKET_NAME IMAGE_PUBLIC_BASE_URL; do
             if [[ -z "${!name}" ]]; then
               echo "Missing required GitHub Actions repository variable: $name" >&2
               exit 1
@@ -134,6 +136,8 @@ jobs:
             --arg cognito_pool "$COGNITO_USER_POOL_ID" \
             --arg cognito_client "$COGNITO_CLIENT_ID" \
             --arg region "$AWS_REGION" \
+            --arg image_bucket "$IMAGE_BUCKET_NAME" \
+            --arg image_public_base "$IMAGE_PUBLIC_BASE_URL" \
             '.executionRoleArn = $execution_role
              | .taskRoleArn = $task_role
              | .containerDefinitions[0].image = $image
@@ -142,6 +146,8 @@ jobs:
              | (.containerDefinitions[0].environment[] | select(.name == "COGNITO_USER_POOL_ID").value) = $cognito_pool
              | (.containerDefinitions[0].environment[] | select(.name == "COGNITO_CLIENT_ID").value) = $cognito_client
              | (.containerDefinitions[0].environment[] | select(.name == "AWS_REGION").value) = $region
+             | (.containerDefinitions[0].environment[] | select(.name == "IMAGE_BUCKET_NAME").value) = $image_bucket
+             | (.containerDefinitions[0].environment[] | select(.name == "IMAGE_PUBLIC_BASE_URL").value) = $image_public_base
              | (.containerDefinitions[0].logConfiguration.options["awslogs-region"]) = $region
              | .containerDefinitions[0].secrets = [
                  {name: "DB_USERNAME", valueFrom: ($database_secret + ":username::")},
