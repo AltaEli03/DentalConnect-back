@@ -15,6 +15,7 @@ public static class ClinicManagementEndpoints
 {
     public static IEndpointRouteBuilder MapClinicManagementEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapGet("/api/clinics/mine", GetMineAsync).RequireAuthorization();
         var group = endpoints.MapGroup("/api/clinics/{clinicId}");
         group.MapGet("/management", GetAsync).RequireAuthorization();
         group.MapPut("/management", UpdateAsync).RequireAuthorization();
@@ -37,6 +38,15 @@ public static class ClinicManagementEndpoints
     {
         error = new { code = "CLINIC_ACCESS_DENIED", message = "No tienes permiso para administrar este consultorio" }
     }, statusCode: StatusCodes.Status403Forbidden);
+
+    private static async Task<IResult> GetMineAsync(HttpContext context, DentalConnectDbContext db, CancellationToken ct)
+    {
+        var clinicId = context.User.FindFirst("custom:clinicId")?.Value ?? context.User.FindFirst("clinicId")?.Value;
+        if (string.IsNullOrWhiteSpace(clinicId) || !CanManage(context, clinicId)) return Denied();
+        var clinic = await db.Clinics.AsNoTracking().Where(c => c.Id == clinicId)
+            .Select(c => new { clinicId = c.Id, c.Name }).SingleOrDefaultAsync(ct);
+        return clinic is null ? Results.NotFound(new { error = new { code = "CLINIC_NOT_FOUND", message = "Consultorio no encontrado" } }) : Results.Ok(new { data = clinic });
+    }
 
     private static async Task<IResult> GetAsync(string clinicId, HttpContext context, DentalConnectDbContext db, CancellationToken ct)
     {
