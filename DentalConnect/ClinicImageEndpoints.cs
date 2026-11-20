@@ -14,9 +14,9 @@ public static class ClinicImageEndpoints
     public static IEndpointRouteBuilder MapClinicImageEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/clinics/{clinicId}/management/image", UploadClinicAsync)
-            .RequireAuthorization().DisableAntiforgery().RequestSizeLimit(MaxRequestBytes);
+            .RequireAuthorization().DisableAntiforgery();
         endpoints.MapPost("/api/clinics/{clinicId}/dentists/{dentistId}/image", UploadDentistAsync)
-            .RequireAuthorization().DisableAntiforgery().RequestSizeLimit(MaxRequestBytes);
+            .RequireAuthorization().DisableAntiforgery();
         return endpoints;
     }
 
