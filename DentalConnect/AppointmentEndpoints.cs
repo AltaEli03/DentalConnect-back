@@ -430,6 +430,8 @@ var patientConflict = await db.Appointments.AsNoTracking().AnyAsync(a => a.Id !=
                 appointment.ProposedEndsAt = null;
                 appointment.ProposalExpiresAt = null;
                 await QueueClinicEventAsync(db, appointment.Id, AlternativeAcceptedEvent, now, ct);
+                db.ClinicNotificationEvents.Add(new ClinicNotificationEvent { AppointmentId = appointment.Id, EventType = "APPOINTMENT_CONFIRMED", CreatedAt = now });
+                await QueueNotificationAsync(db, "PATIENT", appointment.PatientSubject, appointment.Id, "APPOINTMENT_CONFIRMED", "Cita confirmada", "Aceptaste el horario propuesto; tu cita quedó confirmada.", ct);
                 await QueueNotificationAsync(db, "CLINIC", appointment.ClinicId, appointment.Id, AlternativeAcceptedEvent,
                     "Horario alternativo aceptado", "El paciente aceptó el horario que propusiste.", ct);
             }
