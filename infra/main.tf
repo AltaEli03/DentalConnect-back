@@ -158,7 +158,10 @@ resource "aws_iam_role_policy" "read_database_credentials" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue"]
-      Resource = aws_db_instance.postgres.master_user_secret[0].secret_arn
+      Resource = concat(
+        [aws_db_instance.postgres.master_user_secret[0].secret_arn],
+        var.smtp_secret_arn == "" ? [] : [var.smtp_secret_arn]
+      )
     }]
   })
 }
