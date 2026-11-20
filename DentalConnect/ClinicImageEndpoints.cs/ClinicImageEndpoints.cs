@@ -1,0 +1,134 @@
+using System.Security.Claims;
+using System.Security.Cryptography;
+using Amazon.S3;
+using Amazon.S3.Model;
+using DentalConnect.Domain.Entities;
+using DentalConnect.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace DentalConnect;
+
+public static class ClinicImageEndpoints
+{
+    private const long MaxImageBytes = 5 * 1024 * 1024;
+    private const long MaxRequestBytes = MaxImageBytes + 64 * 1024;
+
+    public static IEndpointRouteBuilder MapClinicImageEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapPost("/api/clinics/{clinicId}/management/image", UploadClinicAsync)
+            .RequireAuthorization().DisableAntiforgery().RequestSizeLimit(MaxRequestBytes);
+        endpoints.MapPost("/api/clinics/{clinicId}/dentists/{dentistId}/image", UploadDentistAsync)
+            .RequireAuthorization().DisableAntiforgery().RequestSizeLimit(MaxRequestBytes);
+        return endpoints;
+    }
+
+    private static bool CanManage(HttpContext context, string clinicId)
+    {
+        var groups = context.User.FindAll("cognito:groups")
+            .SelectMany(c => c.Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+        var clinicClaim = context.User.FindFirst("custom:clinicId")?.Value ?? context.User.FindFirst("clinicId")?.Value;
+        return context.User.Identity?.IsAuthenticated == true &&
+            (groups.Contains("CLINIC_ADMIN", StringComparer.Ordinal) || context.User.FindFirst(ClaimTypes.Role)?.Value == "CLINIC_ADMIN") &&
+            string.Equals(clinicClaim, clinicId, StringComparison.Ordinal);
+    }
+
+    private static IResult Denied() => Results.Json(new
+    {
+        error = new { code = "CLINIC_ACCESS_DENIED", message = "No tienes permiso para administrar este consultorio" }
+    }, statusCode: StatusCodes.Status403Forbidden);
+
+    private static IResult StorageUnavailable() => Results.Json(new
+    {
+        error = new { code = "IMAGE_STORAGE_UNAVAILABLE", message = "El almacenamiento de imágenes no está configurado" }
+    }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    private static async Task<IResult> UploadClinicAsync(string clinicId, HttpContext context,
+        DentalConnectDbContext db, IAmazonS3 s3, IConfiguration configuration, CancellationToken ct)
+    {
+        if (!CanManage(context, clinicId)) return Denied();
+        var clinic = await db.Clinics.SingleOrDefaultAsync(c => c.Id == clinicId, ct);
+        if (clinic is null) return Results.NotFound(new { error = new { code = "CLINIC_NOT_FOUND", message = "Consultorio no encontrado" } });
+        return await UploadAsync(context.Request, s3, configuration, $"clinic-images/{clinicId}", async imageUrl =>
+        {
+            clinic.ImageUrl = imageUrl;
+            clinic.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }, ct);
+    }
+
+    private static async Task<IResult> UploadDentistAsync(string clinicId, string dentistId, HttpContext context,
+        DentalConnectDbContext db, IAmazonS3 s3, IConfiguration configuration, CancellationToken ct)
+    {
+        if (!CanManage(context, clinicId)) return Denied();
+        var dentist = await db.Dentists.SingleOrDefaultAsync(d => d.Id == dentistId && d.ClinicId == clinicId, ct);
+        if (dentist is null) return Results.NotFound(new { error = new { code = "DENTIST_NOT_FOUND", message = "Dentista no encontrado" } });
+        return await UploadAsync(context.Request, s3, configuration, $"dentist-images/{clinicId}/{dentistId}", async imageUrl =>
+        {
+            dentist.ImageUrl = imageUrl;
+            dentist.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }, ct);
+    }
+
+    private static async Task<IResult> UploadAsync(HttpRequest request, IAmazonS3 s3, IConfiguration configuration,
+        string prefix, Func<string, Task> saveImageUrl, CancellationToken ct)
+    {
+        var bucket = configuration["IMAGE_BUCKET_NAME"];
+        var publicBase = configuration["IMAGE_PUBLIC_BASE_URL"]?.TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(bucket) || !Uri.TryCreate(publicBase, UriKind.Absolute, out var publicUri) || publicUri.Scheme != Uri.UriSchemeHttps)
+            return StorageUnavailable();
+
+        if (request.ContentLength is > MaxRequestBytes) return TooLarge();
+        IFormFile? file;
+        try { file = (await request.ReadFormAsync(ct)).Files.GetFile("file"); }
+        catch (InvalidDataException) { return InvalidImage(); }
+        if (file is null || file.Length == 0) return InvalidImage();
+        if (file.Length > MaxImageBytes) return TooLarge();
+
+        await using var stream = file.OpenReadStream();
+        var signature = new byte[12];
+        var count = await stream.ReadAsync(signature.AsMemory(), ct);
+        var detected = DetectImage(signature, count);
+        if (detected is null) return InvalidImage();
+        stream.Position = 0;
+
+        var key = $"{prefix}/{Guid.NewGuid():N}{detected.Value.Extension}";
+        try
+        {
+            await s3.PutObjectAsync(new PutObjectRequest
+            {
+                BucketName = bucket,
+                Key = key,
+                InputStream = stream,
+                ContentType = detected.Value.ContentType,
+                Metadata = { ["x-amz-meta-upload-source"] = "dentalconnect" }
+            }, ct);
+            var imageUrl = publicBase + "/" + string.Join('/', key.Split('/').Select(Uri.EscapeDataString));
+            await saveImageUrl(imageUrl);
+            return Results.Ok(new { data = new { imageUrl } });
+        }
+        catch (AmazonS3Exception)
+        {
+            return Results.Json(new { error = new { code = "IMAGE_UPLOAD_FAILED", message = "No se pudo guardar la imagen" } }, statusCode: 502);
+        }
+    }
+
+    private static (string ContentType, string Extension)? DetectImage(byte[] bytes, int count)
+    {
+        if (count >= 8 && bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })) return ("image/png", ".png");
+        if (count >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff) return ("image/jpeg", ".jpg");
+        if (count >= 12 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' &&
+            bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P') return ("image/webp", ".webp");
+        return null;
+    }
+
+    private static IResult TooLarge() => Results.Json(new
+    {
+        error = new { code = "IMAGE_TOO_LARGE", message = "La imagen debe pesar como máximo 5 MB" }
+    }, statusCode: StatusCodes.Status413PayloadTooLarge);
+
+    private static IResult InvalidImage() => Results.BadRequest(new
+    {
+        error = new { code = "INVALID_IMAGE", message = "Selecciona una imagen PNG, JPEG o WebP válida" }
+    });
+}
