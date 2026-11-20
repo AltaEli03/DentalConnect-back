@@ -389,7 +389,8 @@ resource "aws_ecs_service" "api" {
   task_definition                    = aws_ecs_task_definition.api.arn
   desired_count                      = 0
   launch_type                        = "FARGATE"
-  deployment_minimum_healthy_percent = 0
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
 
   network_configuration {
     subnets          = aws_subnet.public[*].id
@@ -401,6 +402,11 @@ resource "aws_ecs_service" "api" {
     target_group_arn = aws_lb_target_group.api.arn
     container_name   = "api"
     container_port   = 3000
+  }
+
+  # GitHub Actions owns the running image and replica count after bootstrap.
+  lifecycle {
+    ignore_changes = [task_definition, desired_count]
   }
 
   depends_on = [aws_lb_listener.http]
@@ -417,3 +423,48 @@ output "ecs_execution_role_arn" { value = aws_iam_role.task_execution.arn }
 output "ecs_subnet_ids" { value = join(",", aws_subnet.public[*].id) }
 output "ecs_security_group_id" { value = aws_security_group.api.id }
 output "github_deploy_role_arn" { value = aws_iam_role.github_deploy.arn }
+
+
+# Private storage for clinic and dentist profile images. Public reads go through the API.
+resource "aws_s3_bucket" "images" {
+  bucket = var.image_bucket_name != "" ? var.image_bucket_name : "${var.project_name}-images-${data.aws_caller_identity.current.account_id}-${replace(var.aws_region, "-", "")}"
+}
+
+resource "aws_s3_bucket_public_access_block" "images" {
+  bucket                  = aws_s3_bucket.images.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_ownership_controls" "images" {
+  bucket = aws_s3_bucket.images.id
+  rule { object_ownership = "BucketOwnerEnforced" }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "images" {
+  bucket = aws_s3_bucket.images.id
+  rule {
+    apply_server_side_encryption_by_default { sse_algorithm = "AES256" }
+  }
+}
+
+resource "aws_iam_role_policy" "image_storage" {
+  name = "DentalConnectPrivateImageStorage"
+  role = aws_iam_role.api_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:GetObject", "s3:PutObject"]
+      Resource = [
+        "${aws_s3_bucket.images.arn}/clinic-images/*",
+        "${aws_s3_bucket.images.arn}/dentist-images/*"
+      ]
+    }]
+  })
+}
+
+output "image_bucket_name" { value = aws_s3_bucket.images.bucket }
+output "image_public_base_url" { value = "https://${aws_cloudfront_distribution.api.domain_name}/api/images" }
