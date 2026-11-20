@@ -43,7 +43,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
 {
     if (!string.IsNullOrWhiteSpace(cognitoPoolId)) options.Authority = $"https://cognito-idp.{awsRegion}.amazonaws.com/{cognitoPoolId}";
     if (!string.IsNullOrWhiteSpace(cognitoClientId)) options.Audience = cognitoClientId;
-    options.TokenValidationParameters.RoleClaimType = "cognito:groups";
+    options.MapInboundClaims = false; options.TokenValidationParameters.RoleClaimType = "cognito:groups";
 });
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<IClinicRepository, EfClinicRepository>();
