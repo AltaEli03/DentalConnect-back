@@ -41,6 +41,7 @@ builder.Services.AddSingleton(new CognitoOptions(cognitoPoolId ?? string.Empty, 
 builder.Services.AddSingleton<IIdentityProvider, CognitoIdentityProvider>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
 {
+    options.MapInboundClaims = false;
     if (!string.IsNullOrWhiteSpace(cognitoPoolId)) options.Authority = $"https://cognito-idp.{awsRegion}.amazonaws.com/{cognitoPoolId}";
     if (!string.IsNullOrWhiteSpace(cognitoClientId)) options.Audience = cognitoClientId;
     options.MapInboundClaims = false; options.TokenValidationParameters.RoleClaimType = "cognito:groups";
@@ -54,6 +55,12 @@ builder.Services.AddOptions<ProposalExpirationOptions>()
     .Validate(options => options.BatchSize > 0, "ProposalExpiration:BatchSize must be positive")
     .ValidateOnStart();
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<ProposalExpirationWorker>();
+var smtpSettingsPresent = new[] { "SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "MAIL_FROM" }
+    .All(key => !string.IsNullOrWhiteSpace(builder.Configuration[key]));
+if (!builder.Environment.IsEnvironment("Testing") && smtpSettingsPresent)
+    builder.Services.AddHostedService<AppointmentEmailWorker>();
+else if (!builder.Environment.IsEnvironment("Testing"))
+    Console.WriteLine("SMTP no está configurado: los avisos dentro de DentalConnect seguirán activos, pero no se enviarán correos de citas.");
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(frontendOrigins)
     .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS").AllowAnyHeader()));
@@ -114,6 +121,23 @@ app.UseClinicMembershipClaims();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapGet("/api/health", () => Results.Json(new { status = "ok", service = "DentalConnect API" }));
+app.MapGet("/api/auth/me", (HttpContext ctx) =>
+{
+    if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
+    var claims = ctx.User.FindAll("cognito:groups").SelectMany(claim => claim.Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)).ToHashSet(StringComparer.Ordinal);
+    var clinicId = ctx.User.FindFirst("clinicId")?.Value ?? ctx.User.FindFirst("custom:clinicId")?.Value ?? ctx.User.FindFirst("clinic_id")?.Value ?? ctx.User.FindFirst("custom:clinic_id")?.Value;
+    var role = clinicId is not null ? "CLINIC_ADMIN" : claims.Contains("PLATFORM_ADMIN") ? "PLATFORM_ADMIN" : claims.FirstOrDefault() ?? "PACIENTE";
+    return Results.Ok(new { data = new { user = new {
+        id = ctx.User.FindFirst("sub")?.Value ?? string.Empty,
+        firstName = ctx.User.FindFirst("given_name")?.Value ?? string.Empty,
+        lastName = ctx.User.FindFirst("family_name")?.Value ?? string.Empty,
+        email = ctx.User.FindFirst("email")?.Value ?? string.Empty,
+        phone = ctx.User.FindFirst("phone_number")?.Value ?? string.Empty,
+        role, clinicId,
+        isEmailVerified = ctx.User.FindFirst("email_verified")?.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true,
+        isActive = true
+    } } });
+}).RequireAuthorization();
 app.MapGet("/api/clinics", async (HttpContext ctx, IClinicRepository clinics, CancellationToken ct) =>
 {
     var search = ctx.Request.Query.ContainsKey("search") ? ctx.Request.Query["search"].ToString() : null;
