@@ -44,10 +44,12 @@ public class Clinic
 public class DentalService
 {
     public string Id { get; set; } = CuidGenerator.NewId();
+    public string? ClinicId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public int EstimatedDurationMinutes { get; set; }
     public bool IsActive { get; set; } = true;
+    public Clinic? Clinic { get; set; }
     public ICollection<ClinicService> ClinicServices { get; set; } = new List<ClinicService>();
     public ICollection<DentistService> DentistServices { get; set; } = new List<DentistService>();
 }
