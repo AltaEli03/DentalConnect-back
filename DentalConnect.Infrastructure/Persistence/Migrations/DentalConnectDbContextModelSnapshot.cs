@@ -284,6 +284,10 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("id");
 
+                    b.Property<string>("ClinicId")
+                        .HasColumnType("text")
+                        .HasColumnName("clinicId");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("text")
@@ -306,6 +310,9 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("DentalService_pkey");
+
+                    b.HasIndex("ClinicId")
+                        .HasDatabaseName("IX_DentalService_ClinicId");
 
                     b.ToTable("DentalService", (string)null);
                 });
@@ -595,6 +602,17 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                     b.Navigation("Clinic");
 
                     b.Navigation("DentalService");
+                });
+
+            modelBuilder.Entity("DentalConnect.Domain.Entities.DentalService", b =>
+                {
+                    b.HasOne("DentalConnect.Domain.Entities.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("FK_DentalService_Clinic_ClinicId");
+
+                    b.Navigation("Clinic");
                 });
 
             modelBuilder.Entity("DentalConnect.Domain.Entities.Dentist", b =>

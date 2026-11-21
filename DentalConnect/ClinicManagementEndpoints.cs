@@ -10,6 +10,7 @@ public sealed record ClinicProfileRequest(
     string? Municipality, string? State, string? PostalCode, string? ImageUrl,
     double? Latitude, double? Longitude);
 public sealed record ClinicServiceRequest(bool IsActive, decimal PriceFrom);
+public sealed record CreateClinicServiceRequest(string? Name, string? Description, int EstimatedDurationMinutes, decimal PriceFrom);
 
 public static class ClinicManagementEndpoints
 {
@@ -20,6 +21,7 @@ public static class ClinicManagementEndpoints
         group.MapGet("/management", GetAsync).RequireAuthorization();
         group.MapPut("/management", UpdateAsync).RequireAuthorization();
         group.MapPut("/management/services/{serviceId}", SetServiceAsync).RequireAuthorization();
+        group.MapPost("/management/services", CreateServiceAsync).RequireAuthorization();
         return endpoints;
     }
 
@@ -56,9 +58,10 @@ public static class ClinicManagementEndpoints
                 c.State, c.PostalCode, c.ImageUrl, c.Latitude, c.Longitude, c.IsActive })
             .SingleOrDefaultAsync(ct);
         if (clinic is null) return Results.NotFound(new { error = new { code = "CLINIC_NOT_FOUND", message = "Consultorio no encontrado" } });
-        var services = await db.DentalServices.AsNoTracking().Where(s => s.IsActive)
+        var services = await db.DentalServices.AsNoTracking().Where(s => s.IsActive && (s.ClinicId == null || s.ClinicId == clinicId))
             .OrderBy(s => s.Name)
             .Select(s => new { s.Id, s.Name, s.Description, s.EstimatedDurationMinutes,
+                IsCustom = s.ClinicId != null,
                 IsOffered = s.ClinicServices.Any(cs => cs.ClinicId == clinicId && cs.IsActive),
                 PriceFrom = s.ClinicServices.Where(cs => cs.ClinicId == clinicId && cs.IsActive)
                     .Select(cs => (decimal?)cs.PriceFrom).FirstOrDefault() })
@@ -100,7 +103,7 @@ public static class ClinicManagementEndpoints
             return Results.BadRequest(new { error = new { code = "VALIDATION_ERROR", message = "Precio o identificador inválido" } });
         var clinicExists = await db.Clinics.AnyAsync(c => c.Id == clinicId, ct);
         if (!clinicExists) return Results.NotFound(new { error = new { code = "CLINIC_NOT_FOUND", message = "Consultorio no encontrado" } });
-        if (!await db.DentalServices.AnyAsync(s => s.Id == serviceId && s.IsActive, ct))
+        if (!await db.DentalServices.AnyAsync(s => s.Id == serviceId && s.IsActive && (s.ClinicId == null || s.ClinicId == clinicId), ct))
             return Results.NotFound(new { error = new { code = "SERVICE_NOT_FOUND", message = "Servicio dental no disponible" } });
         var offer = await db.ClinicServices.SingleOrDefaultAsync(cs => cs.ClinicId == clinicId && cs.DentalServiceId == serviceId, ct);
         if (offer is null)
@@ -112,6 +115,40 @@ public static class ClinicManagementEndpoints
         offer.IsActive = request.IsActive;
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { data = new { offer.Id, offer.ClinicId, offer.DentalServiceId, offer.PriceFrom, offer.IsActive } });
+    }
+
+    private static async Task<IResult> CreateServiceAsync(string clinicId, HttpContext context,
+        CreateClinicServiceRequest? request, DentalConnectDbContext db, CancellationToken ct)
+    {
+        if (!CanManage(context, clinicId)) return Denied();
+        if (!CuidGenerator.IsValid(clinicId) || request is null ||
+            string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length is < 2 or > 100 ||
+            string.IsNullOrWhiteSpace(request.Description) || request.Description.Trim().Length > 500 ||
+            request.EstimatedDurationMinutes is < 5 or > 480 || request.PriceFrom is < 0 or > 1_000_000)
+            return Results.BadRequest(new { error = new { code = "VALIDATION_ERROR", message = "Revisa nombre, descripción, duración (5–480 min) y precio" } });
+
+        if (!await db.Clinics.AnyAsync(c => c.Id == clinicId && c.IsActive, ct))
+            return Results.NotFound(new { error = new { code = "CLINIC_NOT_FOUND", message = "Consultorio no encontrado o inactivo" } });
+
+        var name = request.Name.Trim();
+        if (await db.DentalServices.AnyAsync(s => s.IsActive && (s.ClinicId == null || s.ClinicId == clinicId) && s.Name.ToLower() == name.ToLower(), ct))
+            return Results.Conflict(new { error = new { code = "SERVICE_EXISTS", message = "Ya existe un servicio con ese nombre en el catálogo o en tu consultorio" } });
+
+        var service = new DentalService
+        {
+            ClinicId = clinicId,
+            Name = name,
+            Description = request.Description.Trim(),
+            EstimatedDurationMinutes = request.EstimatedDurationMinutes,
+            IsActive = true
+        };
+        db.DentalServices.Add(service);
+        db.ClinicServices.Add(new ClinicService { ClinicId = clinicId, DentalServiceId = service.Id, PriceFrom = request.PriceFrom, IsActive = true });
+        await db.SaveChangesAsync(ct);
+        return Results.Created($"/api/clinics/{clinicId}/management/services/{service.Id}", new
+        {
+            data = new { service.Id, service.Name, service.Description, service.EstimatedDurationMinutes, isCustom = true, isOffered = true, priceFrom = request.PriceFrom }
+        });
     }
 
     private static bool Valid(ClinicProfileRequest? request)

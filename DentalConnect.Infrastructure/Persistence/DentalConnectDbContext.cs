@@ -47,10 +47,17 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
             entity.ToTable("DentalService");
             entity.HasKey(e => e.Id).HasName("DentalService_pkey");
             entity.Property(e => e.Id).HasColumnName("id").IsRequired();
+            entity.Property(e => e.ClinicId).HasColumnName("clinicId");
             entity.Property(e => e.Name).HasColumnName("name").IsRequired();
             entity.Property(e => e.Description).HasColumnName("description").IsRequired();
             entity.Property(e => e.EstimatedDurationMinutes).HasColumnName("estimatedDurationMinutes").IsRequired();
             entity.Property(e => e.IsActive).HasColumnName("isActive").HasDefaultValue(true).IsRequired();
+            entity.HasIndex(e => e.ClinicId).HasDatabaseName("IX_DentalService_ClinicId");
+            entity.HasOne(e => e.Clinic)
+                .WithMany()
+                .HasForeignKey(e => e.ClinicId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_DentalService_Clinic_ClinicId");
         });
 
         modelBuilder.Entity<ClinicService>(entity =>
