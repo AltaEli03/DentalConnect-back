@@ -16,6 +16,7 @@ public sealed class AppointmentEmailWorker(
     private readonly string username = configuration["SMTP_USERNAME"]!;
     private readonly string password = configuration["SMTP_PASSWORD"]!;
     private readonly string sender = configuration["MAIL_FROM"]!;
+    private readonly string frontendOrigin = (configuration["FRONTEND_ORIGIN"] ?? string.Empty).TrimEnd('/');
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -42,12 +43,12 @@ public sealed class AppointmentEmailWorker(
         var connection = (NpgsqlConnection)db.Database.GetDbConnection();
         await connection.OpenAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
-        string eventId, eventType, folio, clinicName, clinicEmail, patientEmail, patientName, timeZoneId;
+        string eventId, appointmentId, eventType, folio, clinicName, clinicEmail, patientEmail, patientName, timeZoneId;
         DateTimeOffset startsAt;
         DateTimeOffset? proposedStartsAt;
         string? rejectionReason;
         await using (var command = new NpgsqlCommand("""
-            SELECT e."id", e."eventType", a."folio", c."name", c."email", a."patientEmail",
+            SELECT e."id", a."id", e."eventType", a."folio", c."name", c."email", a."patientEmail",
                    concat_ws(' ', a."patientFirstName", a."patientLastName"), a."startsAt",
                    a."proposedStartsAt", a."rejectionReason", a."timeZoneId"
             FROM "ClinicNotificationEvent" e
@@ -61,26 +62,34 @@ public sealed class AppointmentEmailWorker(
         {
             await using var reader = await command.ExecuteReaderAsync(ct);
             if (!await reader.ReadAsync(ct)) { await transaction.CommitAsync(ct); return false; }
-            eventId = reader.GetString(0); eventType = reader.GetString(1); folio = reader.GetString(2);
-            clinicName = reader.GetString(3); clinicEmail = reader.GetString(4);
-            patientEmail = reader.IsDBNull(5) ? string.Empty : reader.GetString(5);
-            patientName = reader.IsDBNull(6) ? "" : reader.GetString(6);
-            startsAt = reader.GetFieldValue<DateTimeOffset>(7);
-            proposedStartsAt = reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8);
-            rejectionReason = reader.IsDBNull(9) ? null : reader.GetString(9);
-            timeZoneId = reader.GetString(10);
+            eventId = reader.GetString(0); appointmentId = reader.GetString(1); eventType = reader.GetString(2); folio = reader.GetString(3);
+            clinicName = reader.GetString(4); clinicEmail = reader.GetString(5);
+            patientEmail = reader.IsDBNull(6) ? string.Empty : reader.GetString(6);
+            patientName = reader.IsDBNull(7) ? "" : reader.GetString(7);
+            startsAt = reader.GetFieldValue<DateTimeOffset>(8);
+            proposedStartsAt = reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9);
+            rejectionReason = reader.IsDBNull(10) ? null : reader.GetString(10);
+            timeZoneId = reader.GetString(11);
         }
 
+        var clinicLink = BuildFrontendLink($"/administrar-solicitudes?appointmentId={Uri.EscapeDataString(appointmentId)}");
+        var patientLink = eventType == "APPOINTMENT_ALTERNATIVE_PROPOSED"
+            ? BuildFrontendLink($"/mi-solicitud?appointmentId={Uri.EscapeDataString(appointmentId)}")
+            : BuildFrontendLink("/mis-citas");
         var (recipient, subject, body) = BuildMessage(eventType, folio, clinicName, patientName,
-            startsAt, proposedStartsAt, rejectionReason, timeZoneId, clinicEmail, patientEmail);
+            startsAt, proposedStartsAt, rejectionReason, timeZoneId, clinicEmail, patientEmail, clinicLink, patientLink);
         if (!string.IsNullOrWhiteSpace(recipient))
         {
             await SendAsync(recipient, subject, body, ct);
             if (eventType == "APPOINTMENT_REQUESTED" && !string.IsNullOrWhiteSpace(clinicEmail))
-                await SendAsync(clinicEmail, "DentalConnect: nueva solicitud de cita", $"Llegó una solicitud {folio} de {patientName} para {requestedTime(startsAt, timeZoneId)}. Entra a DentalConnect para revisarla.", ct);
+                await SendAsync(clinicEmail, "DentalConnect: nueva solicitud de cita", $"Llegó una solicitud {folio} de {patientName} para {requestedTime(startsAt, timeZoneId)}. Gestiona la solicitud en DentalConnect: {clinicLink}", ct);
         }
 
-        await using var mark = new NpgsqlCommand("UPDATE \"ClinicNotificationEvent\" SET \"processedAt\" = CURRENT_TIMESTAMP WHERE \"id\" = @id", connection, transaction);
+        await using var mark = new NpgsqlCommand("""
+            UPDATE "ClinicNotificationEvent"
+            SET "processedAt" = CURRENT_TIMESTAMP
+            WHERE "id" = @id
+            """, connection, transaction);
         mark.Parameters.AddWithValue("id", eventId);
         await mark.ExecuteNonQueryAsync(ct);
         await transaction.CommitAsync(ct);
@@ -103,24 +112,33 @@ public sealed class AppointmentEmailWorker(
     private static (string Recipient, string Subject, string Body) BuildMessage(
         string eventType, string folio, string clinicName, string patientName,
         DateTimeOffset startsAt, DateTimeOffset? proposedStartsAt, string? reason,
-        string timeZoneId, string clinicEmail, string patientEmail)
+        string timeZoneId, string clinicEmail, string patientEmail, string clinicLink, string patientLink)
     {
         TimeZoneInfo zone;
         try { zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId); }
         catch (TimeZoneNotFoundException) { zone = TimeZoneInfo.Utc; }
         var requested = TimeZoneInfo.ConvertTime(startsAt, zone).ToString("dd/MM/yyyy HH:mm");
         var proposed = proposedStartsAt is null ? "" : TimeZoneInfo.ConvertTime(proposedStartsAt.Value, zone).ToString("dd/MM/yyyy HH:mm");
-        return eventType switch
+        var message = eventType switch
         {
-            "APPOINTMENT_REQUESTED" => (patientEmail, "DentalConnect: solicitud recibida", $"Hola {patientName},\n\nRecibimos tu solicitud {folio} para {clinicName}, el {requested}. Está pendiente de aceptación por el consultorio.\n\nDentalConnect"),
-            "APPOINTMENT_CONFIRMED" => (patientEmail, "DentalConnect: cita confirmada", $"Hola {patientName},\n\nTu cita {folio} con {clinicName} quedó confirmada para el {requested}. Procura llegar a tiempo.\n\nDentalConnect"),
-            "APPOINTMENT_REJECTED" => (patientEmail, "DentalConnect: solicitud rechazada", $"Hola {patientName},\n\nEl consultorio {clinicName} rechazó la solicitud {folio}. Motivo: {reason ?? "Consulta el detalle en DentalConnect."}\n\nDentalConnect"),
-            "APPOINTMENT_ALTERNATIVE_PROPOSED" => (patientEmail, "DentalConnect: horario alternativo propuesto", $"Hola {patientName},\n\nEl consultorio {clinicName} propone el {proposed} para tu solicitud {folio}. Entra a DentalConnect para aceptar o rechazar la propuesta.\n\nDentalConnect"),
-            "APPOINTMENT_ALTERNATIVE_ACCEPTED" => (clinicEmail, "DentalConnect: horario alternativo aceptado", $"El paciente aceptó el horario alternativo de la solicitud {folio}. La cita quedó confirmada para {proposedOrRequested(proposed, requested)}."),
-            "APPOINTMENT_ALTERNATIVE_REJECTED" => (clinicEmail, "DentalConnect: horario alternativo rechazado", $"El paciente rechazó el horario alternativo de la solicitud {folio}. Revisa las solicitudes en DentalConnect."),
-            "APPOINTMENT_ALTERNATIVE_EXPIRED" => (clinicEmail, "DentalConnect: propuesta vencida", $"La propuesta para la solicitud {folio} venció y la solicitud volvió a pendiente."),
+            "APPOINTMENT_REQUESTED" => (patientEmail, "DentalConnect: solicitud recibida", $"Hola {patientName}. Recibimos tu solicitud {folio} para {clinicName}, el {requested}. Está pendiente de aceptación por el consultorio. Consulta el estado en DentalConnect: {patientLink}"),
+            "APPOINTMENT_CONFIRMED" => (patientEmail, "DentalConnect: cita confirmada", $"Hola {patientName}. Tu cita {folio} con {clinicName} quedó confirmada para el {requested}. Procura llegar a tiempo. Ver mis citas: {patientLink}"),
+            "APPOINTMENT_REJECTED" => (patientEmail, "DentalConnect: solicitud rechazada", $"Hola {patientName}. El consultorio {clinicName} rechazó la solicitud {folio}. Motivo: {reason ?? "Consulta el detalle en DentalConnect."} Ver mis citas: {patientLink}"),
+            "APPOINTMENT_ALTERNATIVE_PROPOSED" => (patientEmail, "DentalConnect: horario alternativo propuesto", $"Hola {patientName}. El consultorio {clinicName} propone el {proposed} para tu solicitud {folio}. Acepta o rechaza la propuesta en DentalConnect: {patientLink}"),
+            "APPOINTMENT_ALTERNATIVE_ACCEPTED" => (clinicEmail, "DentalConnect: horario alternativo aceptado", $"El paciente aceptó el horario alternativo de la solicitud {folio}. La cita quedó confirmada para {proposedOrRequested(proposed, requested)}. Ver solicitudes: {clinicLink}"),
+            "APPOINTMENT_ALTERNATIVE_REJECTED" => (clinicEmail, "DentalConnect: horario alternativo rechazado", $"El paciente rechazó el horario alternativo de la solicitud {folio}. Revisa las solicitudes en DentalConnect: {clinicLink}"),
+            "APPOINTMENT_ALTERNATIVE_EXPIRED" => (clinicEmail, "DentalConnect: propuesta vencida", $"La propuesta para la solicitud {folio} venció y la solicitud volvió a pendiente. Ver solicitudes: {clinicLink}"),
             _ => (string.Empty, string.Empty, string.Empty)
         };
+        return message;
+    }
+
+    private string BuildFrontendLink(string path)
+    {
+        if (!Uri.TryCreate(frontendOrigin, UriKind.Absolute, out var origin) ||
+            (origin.Scheme != Uri.UriSchemeHttps && origin.Scheme != Uri.UriSchemeHttp))
+            return string.Empty;
+        return new Uri(origin, path.TrimStart('/')).AbsoluteUri;
     }
 
     private static string proposedOrRequested(string proposed, string requested) => string.IsNullOrWhiteSpace(proposed) ? requested : proposed;
