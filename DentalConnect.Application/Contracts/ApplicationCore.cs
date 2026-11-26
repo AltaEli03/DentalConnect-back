@@ -55,7 +55,7 @@ public record ClinicDetailDto(
     IReadOnlyList<DentistDto> Dentists
 );
 
-public record ClinicSearchFilter(string? Search = null, string? ServiceId = null);
+public record ClinicSearchFilter(string? Search = null, string? ServiceId = null, int Page = 1, int PageSize = 6);
 
 public record RegisterRequest(
     string? FirstName,
@@ -88,7 +88,7 @@ public static partial class InputValidator
         return id!;
     }
 
-    public static ClinicSearchFilter ValidateClinicsQuery(string? search, string? serviceId)
+    public static ClinicSearchFilter ValidateClinicsQuery(string? search, string? serviceId, int page = 1, int pageSize = 6)
     {
         var errors = new Dictionary<string, string[]>();
         string? normalizedSearch = null;
@@ -98,13 +98,13 @@ public static partial class InputValidator
             if (normalizedSearch.Length < 1 || normalizedSearch.Length > 120)
                 errors["search"] = ["Must be between 1 and 120 characters"];
         }
-        if (serviceId is not null && !CuidGenerator.IsValid(serviceId))
+        if (page < 1 || page > 100000 || pageSize < 1 || pageSize > 24) errors["page"] = ["Invalid pagination"]; if (serviceId is not null && !CuidGenerator.IsValid(serviceId))
         {
             errors["serviceId"] = ["Invalid cuid"];
         }
         if (errors.Count > 0)
             throw new RequestValidationException(errors);
-        return new ClinicSearchFilter(normalizedSearch, serviceId);
+        return new ClinicSearchFilter(normalizedSearch, serviceId, page, pageSize);
     }
 
     public static (string FirstName, string LastName, string Email, string Phone, string Password) ValidateRegistration(RegisterRequest? req)
@@ -170,7 +170,7 @@ public static partial class InputValidator
 
 public interface IClinicRepository
 {
-    Task<IReadOnlyList<ClinicSummaryDto>> ListActiveAsync(ClinicSearchFilter filters, CancellationToken ct = default);
+    Task<(IReadOnlyList<ClinicSummaryDto> Data, int TotalItems)> ListActiveAsync(ClinicSearchFilter filters, CancellationToken ct = default);
     Task<ClinicDetailDto?> FindActiveByIdAsync(string id, CancellationToken ct = default);
 }
 
