@@ -54,7 +54,19 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
     options.MapInboundClaims = false;
     if (!string.IsNullOrWhiteSpace(cognitoPoolId)) options.Authority = $"https://cognito-idp.{awsRegion}.amazonaws.com/{cognitoPoolId}";
     if (!string.IsNullOrWhiteSpace(cognitoClientId)) options.Audience = cognitoClientId;
-    options.MapInboundClaims = false; options.TokenValidationParameters.RoleClaimType = "cognito:groups";
+    options.TokenValidationParameters.RoleClaimType = "cognito:groups";
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = context =>
+        {
+            var authTime = (context.SecurityToken as Microsoft.IdentityModel.JsonWebTokens.JsonWebToken)
+                ?.GetClaim("auth_time")?.Value;
+            if (!long.TryParse(authTime, out var seconds) ||
+                SessionPolicy.IsExpired(seconds, DateTimeOffset.UtcNow))
+                context.Fail("La sesión superó su duración máxima de 5 días.");
+            return Task.CompletedTask;
+        }
+    };
 });
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<IClinicRepository, EfClinicRepository>();
