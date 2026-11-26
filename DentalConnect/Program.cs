@@ -152,11 +152,11 @@ app.MapGet("/api/auth/me", (HttpContext ctx) =>
 }).RequireAuthorization();
 app.MapGet("/api/clinics", async (HttpContext ctx, IClinicRepository clinics, CancellationToken ct) =>
 {
-    var search = ctx.Request.Query.ContainsKey("search") ? ctx.Request.Query["search"].ToString() : null;
-    var serviceId = ctx.Request.Query.ContainsKey("serviceId") ? ctx.Request.Query["serviceId"].ToString() : null;
-    var filters = InputValidator.ValidateClinicsQuery(search, serviceId);
-    var data = await clinics.ListActiveAsync(filters, ct);
-    return Results.Json(new { data });
+    var search = ctx.Request.Query["search"].FirstOrDefault();
+    var serviceId = ctx.Request.Query["serviceId"].FirstOrDefault();
+    var page = !int.TryParse(ctx.Request.Query["page"], out var parsedPage) ? (ctx.Request.Query.ContainsKey("page") ? 0 : 1) : parsedPage; var pageSize = !int.TryParse(ctx.Request.Query["pageSize"], out var parsedPageSize) ? (ctx.Request.Query.ContainsKey("pageSize") ? 0 : 6) : parsedPageSize; var filters = InputValidator.ValidateClinicsQuery(search, serviceId, page, pageSize);
+    var (data, totalItems) = await clinics.ListActiveAsync(filters, ct);
+    return Results.Json(new { data, pagination = new { page = filters.Page, pageSize = filters.PageSize, totalItems, totalPages = (int)Math.Ceiling(totalItems / (double)filters.PageSize), hasNextPage = filters.Page * filters.PageSize < totalItems, hasPreviousPage = filters.Page > 1 } });
 });
 app.MapGet("/api/clinics/{id}", async (string id, IClinicRepository clinics, CancellationToken ct) =>
 {
