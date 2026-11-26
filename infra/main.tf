@@ -160,7 +160,8 @@ resource "aws_iam_role_policy" "read_database_credentials" {
       Action   = ["secretsmanager:GetSecretValue"]
       Resource = concat(
         [aws_db_instance.postgres.master_user_secret[0].secret_arn],
-        var.smtp_secret_arn == "" ? [] : [var.smtp_secret_arn]
+        var.smtp_secret_arn == "" ? [] : [var.smtp_secret_arn],
+        var.vapid_secret_arn == "" ? [] : [var.vapid_secret_arn]
       )
     }]
   })
@@ -371,10 +372,14 @@ resource "aws_ecs_task_definition" "api" {
       { name = "COGNITO_CLIENT_ID", value = var.cognito_client_id },
       { name = "AWS_REGION", value = var.aws_region }
     ]
-    secrets = [
+    secrets = concat([
       { name = "DB_USERNAME", valueFrom = "${aws_db_instance.postgres.master_user_secret[0].secret_arn}:username::" },
       { name = "DB_PASSWORD", valueFrom = "${aws_db_instance.postgres.master_user_secret[0].secret_arn}:password::" }
-    ]
+    ], var.vapid_secret_arn == "" ? [] : [
+      { name = "VAPID_PUBLIC_KEY", valueFrom = "${var.vapid_secret_arn}:VAPID_PUBLIC_KEY::" },
+      { name = "VAPID_PRIVATE_KEY", valueFrom = "${var.vapid_secret_arn}:VAPID_PRIVATE_KEY::" },
+      { name = "VAPID_SUBJECT", valueFrom = "${var.vapid_secret_arn}:VAPID_SUBJECT::" }
+    ])
     logConfiguration = {
       logDriver = "awslogs"
       options = {

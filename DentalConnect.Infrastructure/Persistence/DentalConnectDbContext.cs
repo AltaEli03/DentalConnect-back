@@ -16,6 +16,8 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<ClinicNotificationEvent> ClinicNotificationEvents => Set<ClinicNotificationEvent>();
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
+    public DbSet<WebPushSubscription> WebPushSubscriptions => Set<WebPushSubscription>();
+    public DbSet<PushNotificationDelivery> PushNotificationDeliveries => Set<PushNotificationDelivery>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -201,11 +203,49 @@ public class DentalConnectDbContext(DbContextOptions<DentalConnectDbContext> opt
             entity.Property(e => e.Message).HasColumnName("message").HasMaxLength(500).IsRequired();
             entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("CURRENT_TIMESTAMP").IsRequired();
             entity.Property(e => e.ReadAt).HasColumnName("readAt");
+            entity.Property(e => e.PushPreparedAt).HasColumnName("pushPreparedAt");
             entity.HasOne<Appointment>().WithMany().HasForeignKey(e => e.AppointmentId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.RecipientType, e.RecipientKey, e.CreatedAt })
                 .HasDatabaseName("IX_UserNotification_Recipient_CreatedAt");
             entity.HasIndex(e => new { e.RecipientType, e.RecipientKey, e.AppointmentId, e.EventType })
                 .HasDatabaseName("IX_UserNotification_Recipient_Appointment_Event").IsUnique();
+        });
+
+        modelBuilder.Entity<WebPushSubscription>(entity =>
+        {
+            entity.ToTable("WebPushSubscription", table => table.HasCheckConstraint(
+                "CK_WebPushSubscription_RecipientType", "\"recipientType\" IN ('PATIENT','CLINIC')"));
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.RecipientType).HasColumnName("recipientType").HasMaxLength(16).IsRequired();
+            entity.Property(e => e.RecipientKey).HasColumnName("recipientKey").HasMaxLength(256).IsRequired();
+            entity.Property(e => e.Endpoint).HasColumnName("endpoint").HasMaxLength(2048).IsRequired();
+            entity.Property(e => e.P256dh).HasColumnName("p256dh").HasMaxLength(256).IsRequired();
+            entity.Property(e => e.Auth).HasColumnName("auth").HasMaxLength(128).IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("createdAt").HasDefaultValueSql("CURRENT_TIMESTAMP").IsRequired();
+            entity.Property(e => e.UpdatedAt).HasColumnName("updatedAt").HasDefaultValueSql("CURRENT_TIMESTAMP").IsRequired();
+            entity.HasIndex(e => e.Endpoint).IsUnique();
+            entity.HasIndex(e => new { e.RecipientType, e.RecipientKey });
+        });
+
+        modelBuilder.Entity<PushNotificationDelivery>(entity =>
+        {
+            entity.ToTable("PushNotificationDelivery");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.NotificationId).HasColumnName("notificationId").IsRequired();
+            entity.Property(e => e.SubscriptionId).HasColumnName("subscriptionId").IsRequired();
+            entity.Property(e => e.AttemptCount).HasColumnName("attemptCount").IsRequired();
+            entity.Property(e => e.NextAttemptAt).HasColumnName("nextAttemptAt");
+            entity.Property(e => e.LastAttemptAt).HasColumnName("lastAttemptAt");
+            entity.Property(e => e.DeliveredAt).HasColumnName("deliveredAt");
+            entity.Property(e => e.LastError).HasColumnName("lastError").HasMaxLength(32);
+            entity.HasOne(e => e.Notification).WithMany(n => n.PushDeliveries)
+                .HasForeignKey(e => e.NotificationId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Subscription).WithMany(s => s.Deliveries)
+                .HasForeignKey(e => e.SubscriptionId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.NotificationId, e.SubscriptionId }).IsUnique();
+            entity.HasIndex(e => new { e.DeliveredAt, e.NextAttemptAt });
         });
     }
 

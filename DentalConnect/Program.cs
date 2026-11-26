@@ -55,6 +55,7 @@ builder.Services.AddOptions<ProposalExpirationOptions>()
     .Validate(options => options.BatchSize > 0, "ProposalExpiration:BatchSize must be positive")
     .ValidateOnStart();
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<ProposalExpirationWorker>();
+if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<PushNotificationWorker>();
 var smtpSettingsPresent = new[] { "SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "MAIL_FROM" }
     .All(key => !string.IsNullOrWhiteSpace(builder.Configuration[key]));
 if (!builder.Environment.IsEnvironment("Testing") && smtpSettingsPresent)
@@ -186,6 +187,7 @@ app.MapDentistEndpoints();
 app.MapPublicAvailabilityEndpoints();
 app.MapAppointmentEndpoints();
 app.MapNotificationEndpoints();
+app.MapPushNotificationEndpoints();
 app.MapClinicOnboardingEndpoints();
 app.MapClinicManagementEndpoints();
 app.MapClinicImageEndpoints();
