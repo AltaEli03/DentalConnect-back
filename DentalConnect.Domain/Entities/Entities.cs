@@ -168,4 +168,33 @@ public class UserNotification
     public string Message { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ReadAt { get; set; }
+    public DateTimeOffset? PushPreparedAt { get; set; }
+    public ICollection<PushNotificationDelivery> PushDeliveries { get; set; } = new List<PushNotificationDelivery>();
+}
+
+public class WebPushSubscription
+{
+    public string Id { get; set; } = CuidGenerator.NewId();
+    public string RecipientType { get; set; } = string.Empty;
+    public string RecipientKey { get; set; } = string.Empty;
+    public string Endpoint { get; set; } = string.Empty;
+    public string P256dh { get; set; } = string.Empty;
+    public string Auth { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public ICollection<PushNotificationDelivery> Deliveries { get; set; } = new List<PushNotificationDelivery>();
+}
+
+public class PushNotificationDelivery
+{
+    public string Id { get; set; } = CuidGenerator.NewId();
+    public string NotificationId { get; set; } = string.Empty;
+    public string SubscriptionId { get; set; } = string.Empty;
+    public int AttemptCount { get; set; }
+    public DateTimeOffset? NextAttemptAt { get; set; }
+    public DateTimeOffset? LastAttemptAt { get; set; }
+    public DateTimeOffset? DeliveredAt { get; set; }
+    public string? LastError { get; set; }
+    public UserNotification Notification { get; set; } = null!;
+    public WebPushSubscription Subscription { get; set; } = null!;
 }
