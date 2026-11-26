@@ -85,7 +85,11 @@ public sealed class AppointmentEmailWorker(
                 await SendAsync(clinicEmail, "DentalConnect: nueva solicitud de cita", $"Llegó una solicitud {folio} de {patientName} para {requestedTime(startsAt, timeZoneId)}. Gestiona la solicitud en DentalConnect: {clinicLink}", ct);
         }
 
-        await using var mark = new NpgsqlCommand("UPDATE "ClinicNotificationEvent" SET "processedAt" = CURRENT_TIMESTAMP WHERE "id" = @id", connection, transaction);
+        await using var mark = new NpgsqlCommand("""
+            UPDATE "ClinicNotificationEvent"
+            SET "processedAt" = CURRENT_TIMESTAMP
+            WHERE "id" = @id
+            """, connection, transaction);
         mark.Parameters.AddWithValue("id", eventId);
         await mark.ExecuteNonQueryAsync(ct);
         await transaction.CommitAsync(ct);
