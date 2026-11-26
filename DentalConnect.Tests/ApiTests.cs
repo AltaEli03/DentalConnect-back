@@ -77,10 +77,10 @@ public class FakeClinicRepository : IClinicRepository
         ));
     }
 
-    public Task<IReadOnlyList<ClinicSummaryDto>> ListActiveAsync(ClinicSearchFilter filters, CancellationToken ct = default)
+    public Task<(IReadOnlyList<ClinicSummaryDto> Data, int TotalItems)> ListActiveAsync(ClinicSearchFilter filters, CancellationToken ct = default)
     {
         LastFilter = filters;
-        return Task.FromResult<IReadOnlyList<ClinicSummaryDto>>(Summaries);
+        return Task.FromResult<(IReadOnlyList<ClinicSummaryDto> Data, int TotalItems)>((Summaries.Skip((filters.Page - 1) * filters.PageSize).Take(filters.PageSize).ToList(), Summaries.Count));
     }
 
     public Task<ClinicDetailDto?> FindActiveByIdAsync(string id, CancellationToken ct = default) =>
@@ -176,7 +176,7 @@ public class ApiTests
         Assert.Equal("ckvservice0000000000000001", clinics.LastFilter?.ServiceId);
 
         var doc = await ReadJson(response);
-        Assert.Equal(1, doc.RootElement.GetProperty("data").GetArrayLength());
+        Assert.Equal(1, doc.RootElement.GetProperty("data").GetArrayLength()); Assert.Equal(1, doc.RootElement.GetProperty("pagination").GetProperty("page").GetInt32()); Assert.Equal(1, doc.RootElement.GetProperty("pagination").GetProperty("totalItems").GetInt32());
         Assert.Equal("Consultorio ficticio.", doc.RootElement.GetProperty("data")[0].GetProperty("description").GetString());
     }
 
