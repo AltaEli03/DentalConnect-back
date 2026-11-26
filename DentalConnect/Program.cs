@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Threading.RateLimiting;
 using Amazon;
 using Amazon.CognitoIdentityProvider;
@@ -9,6 +10,7 @@ using DentalConnect.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -17,6 +19,14 @@ if (!string.IsNullOrWhiteSpace(port) && string.IsNullOrWhiteSpace(builder.Config
     builder.WebHost.UseUrls($"http://+:{port}");
 
 builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = 5 * 1024 * 1024 + 64 * 1024);
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
 var frontendOrigins = (builder.Configuration["FRONTEND_ORIGIN"] ?? "http://localhost:5173")
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 var dbConnectionString = DentalConnectDbContext.BuildConnectionString(
@@ -79,6 +89,7 @@ builder.Services.AddRateLimiter(options =>
 });
 builder.Services.AddOpenApi();
 var app = builder.Build();
+app.UseResponseCompression();
 
 if (args.Contains("--seed"))
 {
