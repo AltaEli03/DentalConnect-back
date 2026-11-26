@@ -17,6 +17,22 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      TEST_DATABASE_URL: Host=localhost;Port=5432;Database=dentalconnect_test;Username=postgres
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: dentalconnect_test
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dentalconnect_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -63,6 +79,7 @@ jobs:
       AWS_ECS_EXECUTION_ROLE_ARN: ${{ vars.AWS_ECS_EXECUTION_ROLE_ARN }}
       AWS_DATABASE_SECRET_ARN: ${{ vars.AWS_DATABASE_SECRET_ARN }}
       AWS_SMTP_SECRET_ARN: ${{ vars.AWS_SMTP_SECRET_ARN }}
+      AWS_VAPID_SECRET_ARN: ${{ vars.AWS_VAPID_SECRET_ARN }}
       AWS_DATABASE_HOST: ${{ vars.AWS_DATABASE_HOST }}
       AWS_ECS_SUBNETS: ${{ vars.AWS_ECS_SUBNETS }}
       AWS_ECS_SECURITY_GROUP: ${{ vars.AWS_ECS_SECURITY_GROUP }}
@@ -165,6 +182,15 @@ jobs:
               ]' "$RUNNER_TEMP/task-definition.json" > "$RUNNER_TEMP/task-definition-with-smtp.json"
             mv "$RUNNER_TEMP/task-definition-with-smtp.json" "$RUNNER_TEMP/task-definition.json"
           fi
+          if [[ -n "$AWS_VAPID_SECRET_ARN" ]]; then
+            jq --arg secret "$AWS_VAPID_SECRET_ARN" \
+              '.containerDefinitions[0].secrets += [
+                {name: "VAPID_PUBLIC_KEY", valueFrom: ($secret + ":VAPID_PUBLIC_KEY::")},
+                {name: "VAPID_PRIVATE_KEY", valueFrom: ($secret + ":VAPID_PRIVATE_KEY::")},
+                {name: "VAPID_SUBJECT", valueFrom: ($secret + ":VAPID_SUBJECT::")}
+              ]' "$RUNNER_TEMP/task-definition.json" > "$RUNNER_TEMP/task-definition-with-vapid.json"
+            mv "$RUNNER_TEMP/task-definition-with-vapid.json" "$RUNNER_TEMP/task-definition.json"
+          fi
           task_definition_arn=$(aws ecs register-task-definition \
             --cli-input-json "file://$RUNNER_TEMP/task-definition.json" \
             --query 'taskDefinition.taskDefinitionArn' --output text)
@@ -218,5 +244,10 @@ jobs:
             echo "- Branch: main"
             echo "- Runtime: .NET 10 / ASP.NET Core"
             echo "- Database: PostgreSQL with EF Core migrations"
+            if [[ -n "$AWS_VAPID_SECRET_ARN" ]]; then
+              echo "- Web Push: VAPID credentials injected from AWS Secrets Manager"
+            else
+              echo "- Web Push: disabled until AWS_VAPID_SECRET_ARN is configured"
+            fi
             echo "- Health check: GET $API_HEALTH_URL"
           } >> "$GITHUB_STEP_SUMMARY"

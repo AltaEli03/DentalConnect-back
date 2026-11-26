@@ -482,6 +482,55 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                     b.ToTable("DentistWeeklySchedule", (string)null);
                 });
 
+            modelBuilder.Entity("DentalConnect.Domain.Entities.PushNotificationDelivery", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("attemptCount");
+
+                    b.Property<DateTimeOffset?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deliveredAt");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lastAttemptAt");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("lastError");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("nextAttemptAt");
+
+                    b.Property<string>("NotificationId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("notificationId");
+
+                    b.Property<string>("SubscriptionId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("subscriptionId");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.HasIndex("DeliveredAt", "NextAttemptAt");
+
+                    b.HasIndex("NotificationId", "SubscriptionId")
+                        .IsUnique();
+
+                    b.ToTable("PushNotificationDelivery", (string)null);
+                });
+
             modelBuilder.Entity("DentalConnect.Domain.Entities.UserNotification", b =>
                 {
                     b.Property<string>("Id")
@@ -510,6 +559,10 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("message");
+
+                    b.Property<DateTimeOffset?>("PushPreparedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pushPreparedAt");
 
                     b.Property<DateTimeOffset?>("ReadAt")
                         .HasColumnType("timestamp with time zone")
@@ -548,6 +601,67 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                     b.ToTable("UserNotification", null, t =>
                         {
                             t.HasCheckConstraint("CK_UserNotification_RecipientType", "\"recipientType\" IN ('PATIENT','CLINIC')");
+                        });
+                });
+
+            modelBuilder.Entity("DentalConnect.Domain.Entities.WebPushSubscription", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Auth")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("auth");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("createdAt")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("endpoint");
+
+                    b.Property<string>("P256dh")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("p256dh");
+
+                    b.Property<string>("RecipientKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("recipientKey");
+
+                    b.Property<string>("RecipientType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("recipientType");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updatedAt")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique();
+
+                    b.HasIndex("RecipientType", "RecipientKey");
+
+                    b.ToTable("WebPushSubscription", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_WebPushSubscription_RecipientType", "\"recipientType\" IN ('PATIENT','CLINIC')");
                         });
                 });
 
@@ -672,6 +786,25 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                     b.Navigation("Dentist");
                 });
 
+            modelBuilder.Entity("DentalConnect.Domain.Entities.PushNotificationDelivery", b =>
+                {
+                    b.HasOne("DentalConnect.Domain.Entities.UserNotification", "Notification")
+                        .WithMany("PushDeliveries")
+                        .HasForeignKey("NotificationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DentalConnect.Domain.Entities.WebPushSubscription", "Subscription")
+                        .WithMany("Deliveries")
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Notification");
+
+                    b.Navigation("Subscription");
+                });
+
             modelBuilder.Entity("DentalConnect.Domain.Entities.UserNotification", b =>
                 {
                     b.HasOne("DentalConnect.Domain.Entities.Appointment", null)
@@ -704,6 +837,16 @@ namespace DentalConnect.Infrastructure.Persistence.Migrations
                     b.Navigation("ScheduleBlocks");
 
                     b.Navigation("WeeklySchedules");
+                });
+
+            modelBuilder.Entity("DentalConnect.Domain.Entities.UserNotification", b =>
+                {
+                    b.Navigation("PushDeliveries");
+                });
+
+            modelBuilder.Entity("DentalConnect.Domain.Entities.WebPushSubscription", b =>
+                {
+                    b.Navigation("Deliveries");
                 });
 #pragma warning restore 612, 618
         }

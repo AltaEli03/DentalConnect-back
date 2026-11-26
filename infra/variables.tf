@@ -50,3 +50,9 @@ variable "smtp_secret_arn" {
   description = "Optional Secrets Manager ARN with host, port, username, password and from fields for appointment email delivery."
   default     = ""
 }
+
+variable "vapid_secret_arn" {
+  type        = string
+  description = "Optional Secrets Manager ARN with VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT fields for Web Push."
+  default     = ""
+}
