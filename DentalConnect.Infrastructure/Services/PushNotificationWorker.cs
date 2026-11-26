@@ -45,16 +45,9 @@ public sealed class PushNotificationWorker(
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<DentalConnectDbContext>();
         var now = DateTimeOffset.UtcNow;
-        var expiredPending = await db.UserNotifications
-            .Where(n => n.PushPreparedAt == null && n.CreatedAt < now.AddMinutes(-2))
-            .OrderBy(n => n.CreatedAt)
-            .Take(100)
-            .ToListAsync(ct);
-        foreach (var notification in expiredPending)
-            notification.PushPreparedAt = now;
-
+        // Process every queued notification, including those created while the worker was offline.
         var pending = await db.UserNotifications
-            .Where(n => n.PushPreparedAt == null && n.CreatedAt >= now.AddMinutes(-2))
+            .Where(n => n.PushPreparedAt == null)
             .OrderBy(n => n.CreatedAt)
             .Take(100)
             .ToListAsync(ct);
@@ -74,7 +67,7 @@ public sealed class PushNotificationWorker(
             }
             notification.PushPreparedAt = DateTimeOffset.UtcNow;
         }
-        if (pending.Count > 0 || expiredPending.Count > 0) await db.SaveChangesAsync(ct);
+        if (pending.Count > 0) await db.SaveChangesAsync(ct);
 
         var deliveries = await db.PushNotificationDeliveries
             .Include(d => d.Notification)
