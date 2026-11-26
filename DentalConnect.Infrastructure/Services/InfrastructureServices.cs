@@ -9,7 +9,7 @@ namespace DentalConnect.Infrastructure.Services;
 
 public class EfClinicRepository(DentalConnectDbContext db) : IClinicRepository
 {
-    public async Task<IReadOnlyList<ClinicSummaryDto>> ListActiveAsync(ClinicSearchFilter filters, CancellationToken ct = default)
+    public async Task<(IReadOnlyList<ClinicSummaryDto> Data, int TotalItems)> ListActiveAsync(ClinicSearchFilter filters, CancellationToken ct = default)
     {
         IQueryable<Clinic> query = db.Clinics
             .AsNoTracking()
@@ -33,13 +33,13 @@ public class EfClinicRepository(DentalConnectDbContext db) : IClinicRepository
                 cs.DentalService.IsActive));
         }
 
-        var clinics = await query
+        var totalItems = await query.CountAsync(ct); var clinics = await query
             .Include(c => c.ClinicServices.Where(cs => cs.IsActive && cs.DentalService.IsActive))
                 .ThenInclude(cs => cs.DentalService)
-            .OrderBy(c => c.Name)
+            .OrderBy(c => c.Name).Skip((filters.Page - 1) * filters.PageSize).Take(filters.PageSize)
             .ToListAsync(ct);
 
-        return clinics.Select(c => new ClinicSummaryDto(
+        return (clinics.Select(c => new ClinicSummaryDto(
             c.Id,
             c.Name,
             c.Description,
@@ -52,7 +52,7 @@ public class EfClinicRepository(DentalConnectDbContext db) : IClinicRepository
                 .Select(cs => new ClinicServiceSummaryDto(cs.DentalService.Id, cs.DentalService.Name))
                 .ToList(),
             c.PostalCode, c.Latitude, c.Longitude
-        )).ToList();
+        )).ToList(), totalItems);
     }
 
     public async Task<ClinicDetailDto?> FindActiveByIdAsync(string id, CancellationToken ct = default)
