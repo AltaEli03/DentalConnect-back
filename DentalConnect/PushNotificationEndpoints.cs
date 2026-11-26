@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using DentalConnect.Domain.Entities;
 using DentalConnect.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace DentalConnect;
@@ -25,14 +26,14 @@ public static class PushNotificationEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> GetStatusAsync(HttpContext http, DentalConnectDbContext db, CancellationToken ct)
+    private static async Task<IResult> GetStatusAsync(HttpContext http, [FromServices] DentalConnectDbContext db, CancellationToken ct)
     {
         if (!TryGetRecipient(http.User, out var type, out var key)) return Results.Unauthorized();
         var count = await db.WebPushSubscriptions.CountAsync(s => s.RecipientType == type && s.RecipientKey == key, ct);
         return Results.Json(new { data = new { enabled = count > 0, devices = count } });
     }
 
-    private static async Task<IResult> SaveAsync(PushSubscriptionRequest? request, HttpContext http, DentalConnectDbContext db, CancellationToken ct)
+    private static async Task<IResult> SaveAsync([FromBody] PushSubscriptionRequest? request, HttpContext http, [FromServices] DentalConnectDbContext db, CancellationToken ct)
     {
         if (!TryGetRecipient(http.User, out var type, out var key)) return Results.Unauthorized();
         if (request is null || !Uri.TryCreate(request.Endpoint, UriKind.Absolute, out var endpoint) ||
@@ -68,7 +69,7 @@ public static class PushNotificationEndpoints
             host.EndsWith(".notify.windows.com", StringComparison.Ordinal);
     }
 
-    private static async Task<IResult> DeleteAsync(PushSubscriptionRequest? request, HttpContext http, DentalConnectDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteAsync([FromBody] PushSubscriptionRequest? request, HttpContext http, [FromServices] DentalConnectDbContext db, CancellationToken ct)
     {
         if (!TryGetRecipient(http.User, out var type, out var key)) return Results.Unauthorized();
         if (string.IsNullOrWhiteSpace(request?.Endpoint)) return Results.BadRequest();
