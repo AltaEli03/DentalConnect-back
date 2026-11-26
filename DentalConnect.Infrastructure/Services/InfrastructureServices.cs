@@ -49,7 +49,7 @@ public class EfClinicRepository(DentalConnectDbContext db) : IClinicRepository
             c.ImageUrl,
             c.ClinicServices
                 .Where(cs => cs.IsActive && cs.DentalService.IsActive)
-                .Select(cs => new ClinicServiceSummaryDto(cs.DentalService.Id, cs.DentalService.Name))
+                .Select(cs => new ClinicServiceSummaryDto(cs.DentalService.Id, cs.DentalService.Name, cs.PriceFrom))
                 .ToList(),
             c.PostalCode, c.Latitude, c.Longitude
         )).ToList(), totalItems);

@@ -4,7 +4,7 @@ using DentalConnect.Domain.Entities;
 
 namespace DentalConnect.Application.Contracts;
 
-public record ClinicServiceSummaryDto(string Id, string Name);
+public record ClinicServiceSummaryDto(string Id, string Name, decimal PriceFrom);
 
 public record ClinicSummaryDto(
     string Id,

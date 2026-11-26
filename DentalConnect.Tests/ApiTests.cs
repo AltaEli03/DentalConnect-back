@@ -73,7 +73,7 @@ public class FakeClinicRepository : IClinicRepository
             Detail.State,
             Detail.Address,
             Detail.ImageUrl,
-            Detail.Services.Select(s => new ClinicServiceSummaryDto(s.Id, s.Name)).ToList()
+            Detail.Services.Select(s => new ClinicServiceSummaryDto(s.Id, s.Name, s.PriceFrom)).ToList()
         ));
     }
 
@@ -178,6 +178,7 @@ public class ApiTests
         var doc = await ReadJson(response);
         Assert.Equal(1, doc.RootElement.GetProperty("data").GetArrayLength()); Assert.Equal(1, doc.RootElement.GetProperty("pagination").GetProperty("page").GetInt32()); Assert.Equal(1, doc.RootElement.GetProperty("pagination").GetProperty("totalItems").GetInt32());
         Assert.Equal("Consultorio ficticio.", doc.RootElement.GetProperty("data")[0].GetProperty("description").GetString());
+        Assert.Equal(700m, doc.RootElement.GetProperty("data")[0].GetProperty("services")[0].GetProperty("priceFrom").GetDecimal());
     }
 
     [Fact]
