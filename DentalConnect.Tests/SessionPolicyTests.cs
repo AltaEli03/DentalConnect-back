@@ -7,20 +7,20 @@ public class SessionPolicyTests
     private static readonly DateTimeOffset Now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
 
     [Fact]
-    public void AcceptsSessionYoungerThanFiveDays()
+    public void AcceptsSessionYoungerThan24Hours()
     {
-        Assert.False(SessionPolicy.IsExpired(Now.AddDays(-4).ToUnixTimeSeconds(), Now));
+        Assert.False(SessionPolicy.IsExpired(Now.AddHours(-23).ToUnixTimeSeconds(), Now));
     }
 
     [Fact]
-    public void RejectsSessionAtFiveDays()
+    public void RejectsSessionAt24Hours()
     {
-        Assert.True(SessionPolicy.IsExpired(Now.AddDays(-5).ToUnixTimeSeconds(), Now));
+        Assert.True(SessionPolicy.IsExpired(Now.AddHours(-24).ToUnixTimeSeconds(), Now));
     }
 
     [Fact]
     public void RejectsOlderSession()
     {
-        Assert.True(SessionPolicy.IsExpired(Now.AddDays(-6).ToUnixTimeSeconds(), Now));
+        Assert.True(SessionPolicy.IsExpired(Now.AddHours(-25).ToUnixTimeSeconds(), Now));
     }
 }

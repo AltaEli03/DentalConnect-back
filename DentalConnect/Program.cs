@@ -63,7 +63,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
                 ?.GetClaim("auth_time")?.Value;
             if (!long.TryParse(authTime, out var seconds) ||
                 SessionPolicy.IsExpired(seconds, DateTimeOffset.UtcNow))
-                context.Fail("La sesión superó su duración máxima de 5 días.");
+                context.Fail("La sesión superó su duración máxima de 24 horas.");
             return Task.CompletedTask;
         }
     };
